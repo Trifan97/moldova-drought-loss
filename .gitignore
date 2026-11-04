@@ -1,0 +1,41 @@
+# Real station data is proprietary and belongs in the private repository only.
+# tests/test_no_private_data.py fails if this rule is ever weakened or bypassed.
+*_REAL
+*_REAL.*
+*_REAL_*
+*_real
+*_real.*
+*_real_*
+
+# Data: every input is downloaded by the pipeline and every output is re-created, so none
+# of it is committed. The .gitkeep files keep the empty folders in a fresh clone.
+data/raw/*
+data/processed/*
+data/climada/*
+outputs/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/climada/.gitkeep
+!outputs/.gitkeep
+
+# Python caches and build artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# OS and editor noise (._* are the macOS sidecar files that appear on this exFAT drive)
+.DS_Store
+._*
+Thumbs.db
+*.sr.lock
+.vscode/
+.idea/
+.claude/

@@ -1,0 +1,13 @@
+# Loose ranges: what the code needs. Exact tested versions live in environment.lock.txt.
+# conda-forge, not pip: CLIMADA needs compiled GDAL, and pip cannot build it on Windows.
+name: drought-loss
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - climada=6.1
+  # Installs this package in editable mode; conda knows nothing about it.
+  - pip
+  - pytest>=8
+  - ruff>=0.6
+  - mypy>=1.11

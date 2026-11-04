@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moldova-drought-loss"
+version = "0.1.0"
+description = "Catastrophe-risk model of agricultural drought loss in Moldova, with a parametric trigger and its basis risk, built on CLIMADA."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Tudor Trifan" }]
+requires-python = ">=3.11,<3.13"
+# Empty on purpose. CLIMADA and its compiled dependencies come from conda-forge through
+# environment.yml, and this package is installed with `pip install -e . --no-deps`, so pip
+# never re-resolves what conda installed.
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# --strict-markers turns a mistyped marker into an error instead of a silently unmarked test.
+# -rs prints the reason for every skipped test, so a skip is never silent.
+addopts = ["--import-mode=importlib", "--strict-markers", "-rs"]
+markers = [
+    "climada: imports CLIMADA, which is slow to load (skip with: pytest -m 'not climada')",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: import order, B: bugbear, UP: modern syntax, N: naming
+select = ["E", "F", "I", "B", "UP", "N"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+# These ship without type hints, so mypy treats their objects as untyped (Any).
+module = ["climada", "climada.*", "pandas", "pandas.*", "scipy", "scipy.*"]
+ignore_missing_imports = true
