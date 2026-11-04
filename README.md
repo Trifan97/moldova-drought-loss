@@ -5,8 +5,8 @@ A catastrophe-risk model of agricultural drought in Moldova, built on
 vulnerability gives loss. It will report Average Annual Loss, a loss exceedance curve, loss
 by district, and a parametric insurance trigger with its basis risk.
 
-> **Status: step 2 of 9.** The synthetic drought generator works and is tested. There is no
-> loss model and there are no results yet.
+> **Status: step 3 of 9.** The synthetic drought generator and the crop-season hazard work and
+> are tested. There is no exposure or loss model yet, so there are no loss results.
 
 ## Data
 
@@ -28,10 +28,12 @@ generator works in that space directly rather than simulating rainfall and stand
   exactly N(0, 1) in every month.
 
 **Calibration, from open data only.** The two parameters are fitted by
-`python -m drought_loss calibrate <folder>` to 18 open 0.5° SPEI grid cells over Moldova
-(January 1950 to September 2023), never to the station records. The range is fitted on
-April–August, the months behind the June–August crop windows. Summer rain is patchier, so
-fitting all months would overstate summer correlation (about 740 km).
+`python -m drought_loss calibrate <folder>` to 18 cells of CSIC's Global 0.5° SPEI database
+over Moldova, never to the station records. The cells are per-location exports from
+[spei.csic.es](https://spei.csic.es/database.html), downloaded in November 2023 and covering
+January 1950 to September 2023. The range is fitted on April–August, the months behind the
+June–August crop windows. Summer rain is patchier, so fitting all months would overstate
+summer correlation (about 740 km).
 
 Against the same cells, the generator reproduces:
 
@@ -54,8 +56,43 @@ Against the same cells, the generator reproduces:
   previous two points.
 - **One persistence value for every month.** Observed lag-1 autocorrelation varies by month
   (from about −0.08 in October to 0.36 in March).
-- **The exact CSIC product behind the cell files is not yet confirmed.** The parameters will
-  be re-fitted if it turns out not to be open.
+
+## Crop-season hazard
+
+`python -m drought_loss hazard <station SPEI CSV>` turns monthly station SPEI into one CLIMADA
+hazard per crop, with one event per year at each of Moldova's 37 districts:
+
+- **Crop window.** Each crop's SPEI-3 is read at the end of its drought-sensitive period in
+  Moldova (Potopová et al. 2016): June for winter wheat (anthesis to grain fill), July for
+  sunflower (flowering to grain fill), August for maize (silking to milk).
+- **Severity.** D = max(0, −SPEI-3), so zero means no drought. CLIMADA stores intensity as a
+  sparse matrix in which zero means "no hazard", and its exceedance tools assume larger is
+  worse.
+- **From stations to districts.** SPEI at each district centroid is the simple-kriging
+  prediction from the stations, under the generator's correlation model, divided by the
+  prediction's standard deviation. Without that division, averaging correlated N(0, 1) values
+  shrinks the extremes, and with a convex loss curve that understates loss. A station missing
+  in a year is left out of that year's prediction only.
+- **Districts.** The 37 units of geoBoundaries ADM1, including Bender and Transnistria. Their
+  centroids are taken in an equal-area projection (EPSG:3035).
+- **Probability.** Each year in the record is one event with probability 1 / (number of
+  years). That treats the record as a sample of one unchanging climate (see the trend above).
+
+On the 60-year synthetic record (seed 42), the share of district-years in each class:
+
+| Crop (month) | D > 0 | D ≥ 1.5 | Years with half the districts at D ≥ 1.5 |
+|---|---|---|---|
+| Winter wheat (June) | 0.641 | 0.064 | 0.033 (2 years) |
+| Sunflower (July) | 0.602 | 0.096 | 0.117 (7 years) |
+| Maize (August) | 0.565 | 0.058 | 0.050 (3 years) |
+
+Under N(0, 1) the first two columns would be 0.5 and 0.067. With districts this strongly
+correlated, 60 years behave like far fewer independent draws, so a single 60-year sample
+wanders that much. That is why the loss results will also use a long synthetic catalogue.
+
+**What it leaves out:** each district gets the value at one point, its centroid, not an
+average over its farmland; and the same open-data correlation model is used to interpolate
+the private station data.
 
 ## Quick start (Windows, PowerShell)
 
@@ -81,9 +118,11 @@ F:\micromamba\micromamba.exe create -y -p F:\envs\drought-loss -f environment.lo
 # Once, after the first activation:
 python -m pip install -e . --no-deps
 
-pytest                                  # everything (data tests skip without the cells)
-pytest -m "not climada and not data"    # fast tests only
-python -m drought_loss synthetic --years 60    # CSV into data/processed
+python -m drought_loss download                 # district boundaries into data/raw (595 KB)
+pytest                                          # everything (data tests skip without the cells)
+pytest -m "not climada and not data"            # fast tests only
+python -m drought_loss synthetic --years 60     # CSV into data/processed
+python -m drought_loss hazard data\processed\synthetic_spei_60y_seed42.csv   # into data/processed/hazard
 
 # Re-fit the generator, and run the data tests, with the open SPEI cell workbooks:
 python -m drought_loss calibrate "F:\Trifan PhD data\Database_SPEI_NUTS"
@@ -110,16 +149,26 @@ environment.lock.txt    exact tested versions (Windows 64-bit)
 pyproject.toml          package metadata, pytest, ruff and mypy settings
 climada.conf            keeps CLIMADA's data in data/climada, not in the home folder
 src/drought_loss/       the package
-  __main__.py           command line: python -m drought_loss synthetic | calibrate
-  config.py             paths, station locations, the generator's fitted parameters
+  __main__.py           command line: python -m drought_loss download | synthetic | hazard | calibrate
+  config.py             paths, pinned inputs (SHA-256), stations, the generator's parameters
   synthetic.py          the synthetic SPEI generator and its calibration
   open_spei.py          reader for the open SPEI cell workbooks (calibration only)
-tests/                  pytest suite (markers: `climada` loads CLIMADA, `data` needs the cells)
+  spei_input.py         checks station SPEI on the way in; keeps private results out of here
+  boundaries.py         district boundaries: download, verify, centroids
+  hazard.py             crop-season severity per district, and the CLIMADA hazard
+tests/                  pytest suite (markers: `climada` loads CLIMADA, `data` needs the cells,
+                        `raw` needs data/raw)
 scripts/dev_env.ps1     prepares a PowerShell window
 data/, outputs/         downloaded inputs and generated outputs (git-ignored)
 ```
 
 ## Licence
 
-Code: MIT (see `LICENSE`). Each data source will keep its own licence, listed here once it
-is used.
+Code: MIT (see `LICENSE`). Data keeps its source licence:
+
+- **District boundaries:** [geoBoundaries](https://www.geoboundaries.org) ADM1 for Moldova
+  (Runfola et al. 2020, PLoS ONE 15(4): e0231866), CC BY 3.0 IGO.
+- **Generator parameters:** derived from CSIC's Global SPEI database (Beguería et al. 2014,
+  Int. J. Climatol. 34:3001; Vicente-Serrano et al. 2010, J. Climate 23:1696), which is made
+  available under the Open Database License. The two fitted numbers in `config.py` are a
+  produced work of that database.

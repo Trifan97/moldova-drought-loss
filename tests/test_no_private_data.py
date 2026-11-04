@@ -4,16 +4,15 @@ A rule in .gitignore is not enough: `git add -f` bypasses it and a later edit ca
 This test looks at what git would actually commit, so it fails before a bad commit exists.
 """
 
-import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from drought_loss.config import PRIVATE_NAME
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-# The naming convention for private files in all of the Moldova drought repositories.
-PRIVATE_NAME = re.compile(r"_real(\.|_|$)", re.IGNORECASE)
 # Everything in these folders is downloaded or generated, so only placeholders belong in git.
 DATA_FOLDERS = ("data/", "outputs/")
 

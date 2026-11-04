@@ -1,9 +1,24 @@
-"""Paths, station locations and the synthetic generator's calibrated parameters."""
+"""Paths, pinned inputs, station locations and the synthetic generator's calibrated parameters."""
 
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+RAW_DIR = REPO_ROOT / "data" / "raw"
 PROCESSED_DIR = REPO_ROOT / "data" / "processed"
+
+# Files from the private real-data track follow this naming convention. The pipeline refuses to
+# write results from them inside this repository, and a test refuses to let them be committed.
+PRIVATE_NAME = re.compile(r"_real(\.|_|$)", re.IGNORECASE)
+
+# Moldova's districts: geoBoundaries ADM1, 37 units (CC BY 3.0 IGO). The URL names a fixed
+# commit, and the SHA-256 is checked on every read, so a fresh clone gets the identical file.
+BOUNDARIES_URL = (
+    "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/"
+    "releaseData/gbOpen/MDA/ADM1/geoBoundaries-MDA-ADM1.geojson"
+)
+BOUNDARIES_FILENAME = "geoBoundaries-MDA-ADM1.geojson"
+BOUNDARIES_SHA256 = "2358d3f23e7199eb8296d8859c09640c4db9f0a9cef31a429708015ee0aea9b6"
 
 # Moldova's 16 meteorological stations, at the rounded public locations already used by the
 # public MD_Drought_Intel dashboard. Camenca, Dubasari, Rabnita and Tiraspol are on the left
@@ -28,10 +43,10 @@ STATIONS: dict[str, tuple[float, float]] = {
     "Tiraspol": (46.85, 29.60),
 }
 
-# Synthetic generator parameters, fitted by `python -m drought_loss calibrate` to 18 open
-# 0.5 degree SPEI cells over Moldova (January 1950 to September 2023). They come from open
-# data only, never from the station records, so the public track stays clean-room.
-# The exact CSIC product behind the cell files is still to be confirmed (see the README).
+# Synthetic generator parameters, fitted by `python -m drought_loss calibrate` to 18 cells of
+# CSIC's Global 0.5 degree SPEI database over Moldova (per-location exports from spei.csic.es,
+# downloaded November 2023, January 1950 to September 2023; Open Database License). They come
+# from open data only, never from the station records, so the public track stays clean-room.
 #
 # Correlation range: exp(-distance / range), fitted on April-August SPEI-1, the months behind
 # the June-August SPEI-3 crop windows. Summer rain is patchier, so this is shorter than the

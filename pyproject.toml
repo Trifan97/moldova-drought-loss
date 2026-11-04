@@ -26,6 +26,7 @@ addopts = ["--import-mode=importlib", "--strict-markers", "-rs"]
 markers = [
     "climada: imports CLIMADA, which is slow to load (skip with: pytest -m 'not climada')",
     "data: needs the open SPEI cell workbooks; set DROUGHT_LOSS_OPEN_SPEI to their folder",
+    "raw: needs the downloaded inputs in data/raw; run: python -m drought_loss download",
 ]
 
 [tool.ruff]
@@ -41,5 +42,8 @@ files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
 # These ship without type hints, so mypy treats their objects as untyped (Any).
-module = ["climada", "climada.*", "openpyxl", "openpyxl.*", "pandas", "pandas.*", "scipy", "scipy.*"]
+module = [
+    "climada", "climada.*", "geopandas", "geopandas.*", "openpyxl", "openpyxl.*",
+    "pandas", "pandas.*", "scipy", "scipy.*",
+]
 ignore_missing_imports = true

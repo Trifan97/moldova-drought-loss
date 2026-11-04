@@ -9,7 +9,11 @@ from pathlib import Path
 
 import numpy as np
 
-from drought_loss import __version__, config, open_spei, synthetic
+from drought_loss import __version__, boundaries, config, hazard, open_spei, spei_input, synthetic
+
+
+def download() -> None:
+    print(boundaries.download_boundaries())
 
 
 def write_synthetic(n_years: int, seed: int) -> None:
@@ -19,6 +23,31 @@ def write_synthetic(n_years: int, seed: int) -> None:
     frame.to_csv(path, index=False)
     print(f"{len(frame):,} rows ({n_years} years x 12 months x {frame.station.nunique()} stations)")
     print(path)
+
+
+def build_hazard(spei_path: Path, out_dir: Path) -> None:
+    spei_input.check_output_location(spei_path, out_dir)
+    station_spei = spei_input.read_station_spei(spei_path)
+    targets = boundaries.district_centroids()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    n_stations, years = station_spei.station.nunique(), station_spei.year
+    print(
+        f"{spei_path.name}: {n_stations} stations, {years.min()}-{years.max()}, "
+        f"{len(targets)} districts"
+    )
+    print(f"{'crop':<13}{'month':>6}{'gaps':>6}{'dry':>8}{'D>=1.5':>8}{'years half D>=1.5':>19}")
+    for crop, month in hazard.CROP_MONTHS.items():
+        severity = hazard.crop_severity(station_spei, targets, crop)
+        severity.to_csv(out_dir / f"severity_{crop}.csv")
+        hazard.to_climada(severity, targets, crop).write_hdf5(out_dir / f"hazard_{crop}.hdf5")
+        # Station-years with no value in this month, each left out of that year's interpolation.
+        gaps = n_stations * len(severity) - station_spei[station_spei.month == month].spei_3.count()
+        summary = hazard.describe(severity)
+        print(
+            f"{crop:<13}{month:>6}{gaps:>6}{summary['share_dry']:>8.3f}"
+            f"{summary['share_severe']:>8.3f}{summary['share_years_half_severe']:>19.3f}"
+        )
+    print(out_dir)
 
 
 def recalibrate(cells_dir: Path) -> None:
@@ -55,19 +84,31 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m drought_loss")
     parser.add_argument("--version", action="version", version=f"drought_loss {__version__}")
     stages = parser.add_subparsers(dest="stage", required=True)
+    stages.add_parser("download", help="fetch the district boundaries into data/raw")
     synth = stages.add_parser(
         "synthetic", help="write synthetic monthly SPEI for the 16 stations to data/processed"
     )
     synth.add_argument("--years", type=int, default=60, help="years to simulate (default 60)")
     synth.add_argument("--seed", type=int, default=config.SYNTHETIC_SEED)
+    build = stages.add_parser(
+        "hazard", help="crop-season drought hazard per district, from a station SPEI CSV"
+    )
+    build.add_argument("spei", type=Path, help="CSV with station, year, month, spei_3")
+    build.add_argument(
+        "--out", type=Path, default=config.PROCESSED_DIR / "hazard", help="output folder"
+    )
     calibrate = stages.add_parser(
         "calibrate", help="re-fit the generator to the open SPEI cells and compare with config.py"
     )
     calibrate.add_argument("cells", type=Path, help="folder with the MD0*.xlsm cell workbooks")
     args = parser.parse_args(argv)
 
-    if args.stage == "synthetic":
+    if args.stage == "download":
+        download()
+    elif args.stage == "synthetic":
         write_synthetic(args.years, args.seed)
+    elif args.stage == "hazard":
+        build_hazard(args.spei, args.out)
     else:
         recalibrate(args.cells)
 
