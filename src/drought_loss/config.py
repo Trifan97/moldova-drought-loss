@@ -20,6 +20,13 @@ BOUNDARIES_URL = (
 BOUNDARIES_FILENAME = "geoBoundaries-MDA-ADM1.geojson"
 BOUNDARIES_SHA256 = "2358d3f23e7199eb8296d8859c09640c4db9f0a9cef31a429708015ee0aea9b6"
 
+# NBS crop statistics (PX-Web responses) and Moldova's FAOSTAT producer prices, as fetched by
+# `python -m drought_loss download` on 2026-11-04. A revision by either source changes the hash
+# and stops the download, so results never move without a reviewed update here.
+NBS_DISTRICT_SHA256 = "1d2ddfe51623dc9c32d38e2c64ec18d46988f21fcdf52dbe2d7cf4b2b3ce0a98"
+NBS_NATIONAL_SHA256 = "7366c483704aaefaae25fb320fb5eee19a734ac269aa5079adc7a01df5a1efd1"
+FAOSTAT_PRICES_SHA256 = "0c9c850785ca8cc2d3ae5b26ec7b9fdec9235dc1235f95cb768bda00aac0830d"
+
 # Moldova's 16 meteorological stations, at the rounded public locations already used by the
 # public MD_Drought_Intel dashboard. Camenca, Dubasari, Rabnita and Tiraspol are on the left
 # bank of the Nistru: they shape the hazard field, but the exposure statistics exclude that

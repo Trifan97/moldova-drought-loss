@@ -5,8 +5,9 @@ A catastrophe-risk model of agricultural drought in Moldova, built on
 vulnerability gives loss. It will report Average Annual Loss, a loss exceedance curve, loss
 by district, and a parametric insurance trigger with its basis risk.
 
-> **Status: step 3 of 9.** The synthetic drought generator and the crop-season hazard work and
-> are tested. There is no exposure or loss model yet, so there are no loss results.
+> **Status: step 4 of 9.** The synthetic drought generator, the crop-season hazard and the
+> exposure work and are tested. There is no vulnerability or loss model yet, so there are no
+> loss results.
 
 ## Data
 
@@ -94,6 +95,48 @@ wanders that much. That is why the loss results will also use a long synthetic c
 average over its farmland; and the same open-data correlation model is used to interpolate
 the private station data.
 
+## Exposure
+
+`python -m drought_loss exposure` values each crop's expected harvest in each district:
+
+value = sown area × expected yield × scale-up to all producers × producer price
+
+| Factor | Source and rule | Why |
+|---|---|---|
+| Sown area | NBS, mean of 2021–2025 | Today's farms, held fixed against every hazard year (an "as-if" exposure). |
+| Expected yield | NBS, median of 2016–2025, only years with sown area | Loss is measured against typical yield; a median is not dragged down by the drought years this model is about. |
+| Scale-up | NBS national production by all producers ÷ the district table's national total, 2016–2025 | The district table covers enterprises and farms of 10 ha or more only. |
+| Price | FAOSTAT producer price, mean of 2020–2024, nominal US$ | Smooths the 2021–2022 price spike without ignoring it. |
+
+| Crop | Scale-up | US$/t | Commercial farms | All producers |
+|---|---|---|---|---|
+| Maize | 2.05 | 181 | $145 M | $298 M |
+| Sunflower | 1.13 | 464 | $343 M | $385 M |
+| Winter wheat | 1.11 | 179 | $212 M | $234 M |
+| **Total** | | | **$700 M** | **$918 M** |
+
+Households grow a third of Moldova's maize but almost no sunflower or wheat, so the scale-up
+matters mainly for maize. Both values are kept, because insurance mostly reaches commercial
+farms while a national disaster-risk view counts every producer.
+
+**Checks.** The 35 districts add up to the NBS table's national row (to 0.1 %, except winter
+wheat in 2016, when Gagauzia's entry is "-"). Expected production lies between the worst and
+best years of 2016–2025, about 8–12 % above the average year: drought years pull an average
+down, which a median ignores. The vulnerability step will measure yield loss against the same
+median, so exposure and damage share one baseline.
+
+**What it leaves out:**
+
+- **Smallholders are placed like large farms.** The scale-up assumes household maize is spread
+  across districts in the same way as commercial maize.
+- **No left bank, no Bender.** NBS excludes them, so the geoBoundaries units "Transnistria" and
+  "Bender" carry no exposure, although the hazard covers them.
+- **Prices do not react to drought.** A national harvest failure can raise local prices and
+  soften the loss in money; the model holds prices fixed. Loss in money scales one for one
+  with the price assumption.
+- **Three crops only.** Barley, soy, sugar beet, vegetables, orchards and vineyards are not in
+  the model.
+
 ## Quick start (Windows, PowerShell)
 
 CLIMADA needs compiled GDAL, which pip cannot build on Windows, so the environment comes from
@@ -118,7 +161,8 @@ F:\micromamba\micromamba.exe create -y -p F:\envs\drought-loss -f environment.lo
 # Once, after the first activation:
 python -m pip install -e . --no-deps
 
-python -m drought_loss download                 # district boundaries into data/raw (595 KB)
+python -m drought_loss download                 # boundaries, NBS tables, FAOSTAT prices (12 MB fetched)
+python -m drought_loss exposure                 # crop value per district into data/processed
 pytest                                          # everything (data tests skip without the cells)
 pytest -m "not climada and not data"            # fast tests only
 python -m drought_loss synthetic --years 60     # CSV into data/processed
@@ -149,13 +193,18 @@ environment.lock.txt    exact tested versions (Windows 64-bit)
 pyproject.toml          package metadata, pytest, ruff and mypy settings
 climada.conf            keeps CLIMADA's data in data/climada, not in the home folder
 src/drought_loss/       the package
-  __main__.py           command line: python -m drought_loss download | synthetic | hazard | calibrate
+  __main__.py           command line: python -m drought_loss download | synthetic | hazard |
+                        exposure | calibrate
   config.py             paths, pinned inputs (SHA-256), stations, the generator's parameters
+  downloads.py          fetching with polite retries; nothing is used until its SHA-256 matches
   synthetic.py          the synthetic SPEI generator and its calibration
   open_spei.py          reader for the open SPEI cell workbooks (calibration only)
   spei_input.py         checks station SPEI on the way in; keeps private results out of here
   boundaries.py         district boundaries: download, verify, centroids
   hazard.py             crop-season severity per district, and the CLIMADA hazard
+  nbs.py                NBS crop statistics through the PX-Web API, and the district crosswalk
+  fao.py                FAOSTAT producer prices for Moldova
+  exposure.py           crop value per district, its reconciliation, and CLIMADA exposures
 tests/                  pytest suite (markers: `climada` loads CLIMADA, `data` needs the cells,
                         `raw` needs data/raw)
 scripts/dev_env.ps1     prepares a PowerShell window
@@ -168,6 +217,10 @@ Code: MIT (see `LICENSE`). Data keeps its source licence:
 
 - **District boundaries:** [geoBoundaries](https://www.geoboundaries.org) ADM1 for Moldova
   (Runfola et al. 2020, PLoS ONE 15(4): e0231866), CC BY 3.0 IGO.
+- **Crop statistics:** Source: National Bureau of Statistics of the Republic of Moldova,
+  [statbank.statistica.md](https://statbank.statistica.md), tables AGR020600reg and AGR020060,
+  CC BY 4.0. The model converts units and combines them as described under Exposure.
+- **Producer prices:** FAO, FAOSTAT Producer Prices (Moldova), CC BY 4.0.
 - **Generator parameters:** derived from CSIC's Global SPEI database (Beguería et al. 2014,
   Int. J. Climatol. 34:3001; Vicente-Serrano et al. 2010, J. Climate 23:1696), which is made
   available under the Open Database License. The two fitted numbers in `config.py` are a
