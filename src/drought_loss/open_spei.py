@@ -56,6 +56,15 @@ def read_cell_workbook(path: Path) -> pd.DataFrame:
     return out
 
 
+def as_sites(cells: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """The cells in the layout the hazard reads for stations: a `station` id per cell, plus a
+    site table (index: that id, columns lat and lon)."""
+    ids = cells["lat"].map("{:.2f}N".format) + "_" + cells["lon"].map("{:.2f}E".format)
+    named = cells.assign(station=ids)
+    sites = named.drop_duplicates("station").set_index("station")[["lat", "lon"]]
+    return named[["station", "year", "month", "spei_3"]], sites
+
+
 def read_cells(folder: Path, pattern: str = "MD0*.xlsm") -> pd.DataFrame:
     """Every cell in the folder, one row per cell and month."""
     paths = sorted(folder.glob(pattern))

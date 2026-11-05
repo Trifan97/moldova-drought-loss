@@ -62,3 +62,30 @@ SYNTHETIC_RANGE_KM = 605.0
 # Lag-1 autocorrelation of monthly SPEI-1, averaged over cells and months.
 SYNTHETIC_LAG1 = 0.103
 SYNTHETIC_SEED = 42
+
+# Impact functions, fitted by `python -m drought_loss vulnerability --cells <folder>` on public
+# data only: NBS district yields over their Theil-Sen trend, against SPEI-3 from the same open
+# CSIC cells, 2007-2023. Per crop: anomaly = a + b SPEI + c SPEI^2, used up to the largest
+# severity in the data (see vulnerability.py for how loss follows from it).
+#                  a         b         c         largest severity
+VULNERABILITY_CURVES: dict[str, tuple[float, float, float, float]] = {
+    "winter_wheat": (0.0706, 0.1233, -0.0237, 1.98),
+    "sunflower": (0.1386, 0.0982, -0.0296, 2.86),
+    "maize": (0.5752, 0.4303, -0.0204, 2.84),
+}
+# Each fitted curve's loss is multiplied by this factor so that its mean loss over years with
+# SPEI-3 <= -1 (SPEI standard normal) equals Potopova et al. (2016, Table 6), from station SPEI.
+# Gridded SPEI flattens a fitted curve (regression dilution); the anchor restores its level.
+# Computed from the rounded curves above, which are what the model runs on.
+VULNERABILITY_ANCHOR_SCALE: dict[str, float] = {
+    "winter_wheat": 1.141,
+    "sunflower": 2.612,
+    "maize": 2.225,
+}
+# Yield scatter around each curve: standard deviation, and the mean correlation of that scatter
+# between districts in the same year.
+VULNERABILITY_RESIDUALS: dict[str, tuple[float, float]] = {
+    "winter_wheat": (0.272, 0.72),
+    "sunflower": (0.229, 0.54),
+    "maize": (0.452, 0.52),
+}

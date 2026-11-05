@@ -5,9 +5,9 @@ A catastrophe-risk model of agricultural drought in Moldova, built on
 vulnerability gives loss. It will report Average Annual Loss, a loss exceedance curve, loss
 by district, and a parametric insurance trigger with its basis risk.
 
-> **Status: step 4 of 9.** The synthetic drought generator, the crop-season hazard and the
-> exposure work and are tested. There is no vulnerability or loss model yet, so there are no
-> loss results.
+> **Status: step 5 of 9.** The synthetic drought generator, the crop-season hazard, the exposure
+> and the impact functions work and are tested. The loss calculation is next, so there are no
+> loss results yet.
 
 ## Data
 
@@ -122,8 +122,8 @@ farms while a national disaster-risk view counts every producer.
 **Checks.** The 35 districts add up to the NBS table's national row (to 0.1 %, except winter
 wheat in 2016, when Gagauzia's entry is "-"). Expected production lies between the worst and
 best years of 2016–2025, about 8–12 % above the average year: drought years pull an average
-down, which a median ignores. The vulnerability step will measure yield loss against the same
-median, so exposure and damage share one baseline.
+down, which a median ignores. The impact functions measure yield loss against each district's
+Theil–Sen trend, the median-based counterpart of that baseline, so exposure and damage agree.
 
 **What it leaves out:**
 
@@ -136,6 +136,67 @@ median, so exposure and damage share one baseline.
   with the price assumption.
 - **Three crops only.** Barley, soy, sugar beet, vegetables, orchards and vineyards are not in
   the model.
+
+## Impact functions
+
+`python -m drought_loss vulnerability --cells <folder>` fits one curve per crop on public data:
+NBS yields for 35 districts against SPEI-3 in the crop's window, 2007–2023 (17 years), with the
+SPEI taken from the open CSIC cells and interpolated to district centroids as in the hazard.
+
+- **Yield anomaly.** Each district's yield over its own Theil–Sen trend, minus 1. Yields rose
+  3–4 % a year over 2007–2025, so a fixed baseline would count old technology as drought.
+  Theil–Sen uses the median of pairwise slopes, so drought years do not drag the trend down.
+- **Curve.** anomaly = a + b·SPEI + c·SPEI², the second-order polynomial Potopová et al. (2016)
+  fitted for Moldova, over wet and dry years alike. The fitted coefficients, the anchor factors
+  and the scatter below are pinned in `config.py`, and a data test re-derives them.
+- **Loss.** The fitted shortfall below trend at SPEI = −D, the way crop insurance measures loss
+  against an expected yield. A year drier than normal but still above the expected yield is not
+  a loss. A worse drought never loses less, and past the largest severity in the data the curve
+  stays flat rather than extrapolate.
+- **Uncertainty.** Refits on 1,000 resamples of whole years. Districts in one year share its
+  weather, so resampling district-years would pretend there were 35 times more droughts.
+- **Level anchored to the literature.** Fitted on gridded SPEI, the curves come out flatter than
+  the station-based curves in the literature (see "Gridded SPEI" below). Each fitted shape is
+  therefore scaled until its mean loss over years with SPEI-3 ≤ −1 equals Potopová et al. (2016,
+  Table 6): 0.188 for winter wheat, 0.223 for sunflower, 0.305 for maize. The shape, the onset and
+  the flat end come from the data; the level comes from the station-based study. Because loss is
+  capped at the whole harvest, the factor is found by root-finding, not as a ratio of means.
+
+| Crop | Fitted: loss at D = 1.5 / 2.0 (90 % interval) | Anchor factor | **Model: loss at D = 1.5 / 2.0** | Flat from D | AAL ratio, SPEI ~ N(0, 1): fitted → model |
+|---|---|---|---|---|---|
+| Winter wheat | 0.17 (0.08–0.27) / 0.27 (0.14–0.46) | ×1.14 | **0.19 / 0.31** | 1.98 | 3.1 % → 3.5 % |
+| Sunflower | 0.08 (0.01–0.15) / 0.18 (0.09–0.25) | ×2.61 | **0.20 / 0.46** | 2.86 | 1.4 % → 3.5 % |
+| Maize | 0.12 (0.00–0.27) / 0.37 (0.21–0.56) | ×2.23 | **0.26 / 0.82** | 2.84 | 2.4 % → 4.8 % |
+
+The model's maize curve reaches the whole harvest from D ≈ 2.3; the 2007 national maize loss was
+67 % (Potopová et al. 2016, Table 5a), and individual districts lost more.
+
+The curves leave a lot unexplained: around them, yields scatter with a standard deviation of
+0.27 (wheat), 0.23 (sunflower) and 0.45 (maize) of trend, and that scatter is shared between
+districts in the same year (correlation 0.72, 0.54, 0.52). Both numbers are kept in `config.py`
+because a parametric trigger can only be judged against losses that include this noise.
+
+**Why loss starts late.** The trend was set in 2007–2023, a decade when most summers were dry, so
+yields reach trend at a severity of about 1 and fall below it only after that. Measuring loss
+from a "normal-climate" yield instead would lean on the few wet years in the record (maize's
+include the 2021 bumper crop, 80 % over trend) and roughly triple the maize AAL ratio. The drier
+recent climate belongs in the hazard, not the curve: see the trend under Synthetic hazard.
+
+**What it leaves out, and which way it leans:**
+
+- **Gridded SPEI flattens the fitted curves, so the level is borrowed.** The cells are a
+  smoothed, noisy stand-in for each district's drought, and noise in a predictor pulls a fitted
+  slope towards zero (regression dilution). Fitted, the maize and sunflower curves give about half
+  the loss Potopová et al. (2016) found with station SPEI; the hazard is generated at station
+  locations, so the model uses the anchored level. The anchor carries its own assumptions: it is
+  national, for 1962–2012, and scaling a curve multiplies loss without moving where it starts.
+- **One number per crop sets the level.** Loss in money scales with the anchor factor, and the
+  anchor's own uncertainty is not quantified; the 90 % intervals above describe the fitted shape.
+- **Few droughts.** 17 years with about five severe ones; the intervals above are wide.
+- **Commercial yields only.** The NBS district yields cover farms of 10 ha or more; household
+  maize may respond differently.
+- **Winter wheat stops at D = 1.98.** No June in 2007–2023 was drier, so harsher wheat droughts
+  get the D = 1.98 loss, although the 2007 national wheat loss of 50 % suggests more.
 
 ## Quick start (Windows, PowerShell)
 
@@ -170,6 +231,7 @@ python -m drought_loss hazard data\processed\synthetic_spei_60y_seed42.csv   # i
 
 # Re-fit the generator, and run the data tests, with the open SPEI cell workbooks:
 python -m drought_loss calibrate "F:\Trifan PhD data\Database_SPEI_NUTS"
+python -m drought_loss vulnerability --cells "F:\Trifan PhD data\Database_SPEI_NUTS"
 $env:DROUGHT_LOSS_OPEN_SPEI = "F:\Trifan PhD data\Database_SPEI_NUTS"
 pytest -m data
 ```
@@ -194,7 +256,7 @@ pyproject.toml          package metadata, pytest, ruff and mypy settings
 climada.conf            keeps CLIMADA's data in data/climada, not in the home folder
 src/drought_loss/       the package
   __main__.py           command line: python -m drought_loss download | synthetic | hazard |
-                        exposure | calibrate
+                        exposure | vulnerability | calibrate
   config.py             paths, pinned inputs (SHA-256), stations, the generator's parameters
   downloads.py          fetching with polite retries; nothing is used until its SHA-256 matches
   synthetic.py          the synthetic SPEI generator and its calibration
@@ -205,6 +267,7 @@ src/drought_loss/       the package
   nbs.py                NBS crop statistics through the PX-Web API, and the district crosswalk
   fao.py                FAOSTAT producer prices for Moldova
   exposure.py           crop value per district, its reconciliation, and CLIMADA exposures
+  vulnerability.py      yield anomalies, the curve fit, year bootstrap, CLIMADA impact functions
 tests/                  pytest suite (markers: `climada` loads CLIMADA, `data` needs the cells,
                         `raw` needs data/raw)
 scripts/dev_env.ps1     prepares a PowerShell window
@@ -221,7 +284,7 @@ Code: MIT (see `LICENSE`). Data keeps its source licence:
   [statbank.statistica.md](https://statbank.statistica.md), tables AGR020600reg and AGR020060,
   CC BY 4.0. The model converts units and combines them as described under Exposure.
 - **Producer prices:** FAO, FAOSTAT Producer Prices (Moldova), CC BY 4.0.
-- **Generator parameters:** derived from CSIC's Global SPEI database (Beguería et al. 2014,
-  Int. J. Climatol. 34:3001; Vicente-Serrano et al. 2010, J. Climate 23:1696), which is made
-  available under the Open Database License. The two fitted numbers in `config.py` are a
-  produced work of that database.
+- **Generator parameters and impact functions:** derived from CSIC's Global SPEI database
+  (Beguería et al. 2014, Int. J. Climatol. 34:3001; Vicente-Serrano et al. 2010, J. Climate
+  23:1696), which is made available under the Open Database License, together with the NBS
+  yields above. The fitted numbers in `config.py` are a produced work of that database.

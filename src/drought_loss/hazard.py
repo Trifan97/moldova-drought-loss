@@ -73,24 +73,38 @@ def interpolate(
     return out
 
 
+def crop_spei(
+    station_spei: pd.DataFrame,
+    targets: pd.DataFrame,
+    crop: str,
+    range_km: float = config.SYNTHETIC_RANGE_KM,
+    sites: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """SPEI-3 in the crop's month at each target: rows are years, columns are targets.
+
+    `sites` locates the values in the `station` column (index: that name, columns lat and lon);
+    by default the 16 stations, but the open grid cells work the same way.
+
+    Every year from the first to the last must appear, because each year becomes an event with
+    the same probability; a year with no station data at all is an error, not a gap.
+    """
+    sites = station_table() if sites is None else sites
+    month = CROP_MONTHS[crop]
+    in_month = station_spei[station_spei["month"] == month]
+    values = in_month.pivot(index="year", columns="station", values="spei_3")
+    years = pd.RangeIndex(values.index.min(), values.index.max() + 1, name="year")
+    values = values.reindex(years)
+    return interpolate(values, sites.loc[values.columns], targets, range_km)
+
+
 def crop_severity(
     station_spei: pd.DataFrame,
     targets: pd.DataFrame,
     crop: str,
     range_km: float = config.SYNTHETIC_RANGE_KM,
 ) -> pd.DataFrame:
-    """Severity D = max(0, -SPEI-3) for one crop: rows are years, columns are targets.
-
-    Every year from the first to the last must appear, because each year becomes an event with
-    the same probability; a year with no station data at all is an error, not a gap.
-    """
-    month = CROP_MONTHS[crop]
-    in_month = station_spei[station_spei["month"] == month]
-    values = in_month.pivot(index="year", columns="station", values="spei_3")
-    years = pd.RangeIndex(values.index.min(), values.index.max() + 1, name="year")
-    values = values.reindex(years)
-    spei = interpolate(values, station_table().loc[values.columns], targets, range_km)
-    return (-spei).clip(lower=0.0)
+    """Severity D = max(0, -SPEI-3) for one crop: rows are years, columns are targets."""
+    return (-crop_spei(station_spei, targets, crop, range_km)).clip(lower=0.0)
 
 
 def to_climada(severity: pd.DataFrame, targets: pd.DataFrame, crop: str) -> Any:

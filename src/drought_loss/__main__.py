@@ -5,9 +5,11 @@ that does not work yet.
 """
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from drought_loss import (
     __version__,
@@ -20,6 +22,7 @@ from drought_loss import (
     open_spei,
     spei_input,
     synthetic,
+    vulnerability,
 )
 
 
@@ -58,6 +61,71 @@ def build_exposure() -> None:
     print(f"{'total':<37}{commercial:>12.1f} M{total:>13.1f} M")
     print("\nExpected production against actual national harvests, 2016-2025 (thousand t):")
     print((exposure.reconcile(table, national) / 1000).round(0).to_string())
+    print(path)
+
+
+def fit_vulnerability(cells_dir: Path | None, stations: Path | None, out_dir: Path) -> None:
+    if stations is not None:
+        spei_input.check_output_location(stations, out_dir)
+        site_spei, sites, label = spei_input.read_station_spei(stations), None, stations.stem
+    else:
+        assert cells_dir is not None
+        site_spei, sites = open_spei.as_sites(open_spei.read_cells(cells_dir))
+        label = "open_cells"
+    centroids = boundaries.district_centroids()
+    anomalies = vulnerability.yield_anomalies(nbs.read_district_table())
+    pinned = vulnerability.calibrated_curves()
+    report = [1.0, 1.5, 2.0, 2.5]
+    grid = np.round(np.arange(0.0, 3.0001, 0.1), 2)
+    tables = []
+    for crop in hazard.CROP_MONTHS:
+        spei = hazard.crop_spei(site_spei, centroids, crop, sites=sites)
+        rows = vulnerability.panel(anomalies[anomalies["crop"] == crop], spei, nbs.DISTRICTS)
+        curve = vulnerability.fit(rows)
+        target = vulnerability.POTOPOVA_TABLE_6[crop]
+        anchored = replace(curve, scale=vulnerability.anchor_scale(curve, target))
+        scatter = vulnerability.residuals(rows, curve)
+        # The interval describes the fitted shape; the anchor then sets its level.
+        boot = vulnerability.bootstrap(rows, grid, 1000, config.SYNTHETIC_SEED)
+        low, high = np.percentile(boot, [5, 95], axis=0)
+        fitted, used = curve.loss(grid), anchored.loss(grid)
+        tables.append(
+            {
+                "crop": crop,
+                "severity": grid,
+                "loss_fitted": fitted,
+                "fitted_low_90": low,
+                "fitted_high_90": high,
+                "loss_anchored": used,
+            }
+        )
+        years = rows["year"]
+        print(
+            f"\n{crop}: {len(rows)} district-years, {years.min()}-{years.max()}"
+            f" | anomaly = {curve.intercept:+.4f} {curve.slope:+.4f} SPEI"
+            f" {curve.curvature:+.4f} SPEI^2, used up to D = {curve.max_severity:.2f}"
+        )
+        print(f"  {'D':>5}  {'fitted (90% interval)':>24}  {'anchored':>9}")
+        for d in report:
+            i = int(round(d * 10))
+            interval = f"{fitted[i]:.3f} ({low[i]:.3f}-{high[i]:.3f})"
+            print(f"  {d:>5.1f}  {interval:>24}  {used[i]:>9.3f}")
+        shared = scatter.within_year_correlation
+        print(f"  scatter: sd {scatter.sd:.3f}, shared within a year {shared:.2f}")
+        print(
+            f"  mean loss when SPEI <= -1: fitted {vulnerability.mean_loss_given(curve):.3f},"
+            f" anchor (Potopova et al. 2016) {target:.3f} -> scale {anchored.scale:.3f}"
+        )
+        print(
+            "  AAL ratio under N(0,1):"
+            f" fitted {vulnerability.average_annual_loss_ratio(curve):.4f},"
+            f" anchored {vulnerability.average_annual_loss_ratio(anchored):.4f}"
+        )
+        if stations is None:
+            print(f"  in config.py: {pinned[crop]}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"vulnerability_{label}.csv"
+    pd.concat([pd.DataFrame(t) for t in tables]).to_csv(path, index=False)
     print(path)
 
 
@@ -145,6 +213,13 @@ def main(argv: list[str] | None = None) -> None:
     build.add_argument(
         "--out", type=Path, default=config.PROCESSED_DIR / "hazard", help="output folder"
     )
+    vuln = stages.add_parser(
+        "vulnerability", help="fit the impact functions to NBS district yields against SPEI"
+    )
+    source = vuln.add_mutually_exclusive_group(required=True)
+    source.add_argument("--cells", type=Path, help="folder with the open MD0*.xlsm cells (public)")
+    source.add_argument("--stations", type=Path, help="station SPEI CSV (private check)")
+    vuln.add_argument("--out", type=Path, default=config.PROCESSED_DIR, help="output folder")
     calibrate = stages.add_parser(
         "calibrate", help="re-fit the generator to the open SPEI cells and compare with config.py"
     )
@@ -159,6 +234,8 @@ def main(argv: list[str] | None = None) -> None:
         write_synthetic(args.years, args.seed)
     elif args.stage == "hazard":
         build_hazard(args.spei, args.out)
+    elif args.stage == "vulnerability":
+        fit_vulnerability(args.cells, args.stations, args.out)
     else:
         recalibrate(args.cells)
 
