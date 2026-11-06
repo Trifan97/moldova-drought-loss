@@ -16,8 +16,13 @@ The crops' value, at expected yield and recent producer prices, is **$918 M** fo
 |---|---|---|
 | **Average annual loss (AAL)** | **35.1** (3.8 % of exposure) | **80.9** (8.8 %) |
 | 1-in-10-year loss | 108 | 264 |
-| 1-in-100-year loss | 409 | 578 |
+| 1-in-100-year loss | 408 | 578 |
 | 1-in-250-year loss | 514 | 657 |
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/exceedance-dark.png">
+  <img src="docs/img/exceedance-light.png" alt="Loss exceedance curve, annual loss in US$ millions against return period from 1 to 1,000 years on a log scale. The recent-climate curve lies above the stationary one at every return period: the 1-in-100-year loss is $408 M stationary and $578 M recent. The 60-year record's points follow the stationary curve, its worst year $403 M.">
+</picture>
 
 - **A drier recent climate more than doubles the risk.** Since 2001, summer SPEI-3 has run 0.3 to
   0.6 standard deviations below its 1950–2023 normal, and because crop loss starts only past a
@@ -33,6 +38,11 @@ The crops' value, at expected yield and recent producer prices, is **$918 M** fo
   a year in a stationary climate and $77–81 M in the recent one; on the 2007–2023 index it would
   have paid $136–153 M a year.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/district-map-dark.png">
+  <img src="docs/img/district-map-light.png" alt="Two maps of Moldova's districts shaded by average annual loss on one colour scale: national AAL $35.1 M in the stationary climate and $80.9 M in the recent one, every district darker in the second. The left bank and Bender are grey, with no exposure. The pattern follows where the crops are, because the synthetic hazard has no regional climate differences.">
+</picture>
+
 ## What it does
 
 ```
@@ -43,10 +53,11 @@ exposure        value of each crop's expected harvest per district
 vulnerability   yield-loss curve per crop, fitted on NBS yields, anchored to the literature
 loss            CLIMADA impacts -> year loss table -> AAL, exceedance curve, loss by district
 parametric      payout rules backtested on recorded yields and priced on the catalogues
+figures         the three figures in this README, light and dark, from the outputs above
 ```
 
 Each stage is a command, `python -m drought_loss <stage>`, and each writes its results to
-`data/processed`.
+`data/processed`, except `figures`, which writes to `docs/img`.
 
 ## Scope
 
@@ -152,6 +163,11 @@ worst and best years of 2016–2025, 8–12 % above the average year.
 | Sunflower | 0.08 (0.01–0.15) / 0.18 (0.09–0.25) | ×2.61 | **0.20 / 0.46** | 1.4 % → 3.5 % |
 | Maize | 0.12 (0.00–0.27) / 0.37 (0.21–0.56) | ×2.23 | **0.26 / 0.82** | 2.4 % → 4.8 % |
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/damage-curves-dark.png">
+  <img src="docs/img/damage-curves-light.png" alt="Damage curves for winter wheat, sunflower and maize: share of the expected harvest lost against drought severity D from 0 to 3. Each panel shows the curve fitted on open data with its 90 % interval and, above it, the model curve after scaling to Potopová et al. (2016), by 1.14, 2.61 and 2.23. At D = 2 the model loses 31 %, 46 % and 82 % of the harvest.">
+</picture>
+
 Loss is measured from the trend yield, not from a "normal-climate" yield: the trend was set in a
 dry decade, so loss starts only at a severity of about 1. Measuring from a normal-climate yield
 would lean on the few wet years (maize's include 2021, 80 % over trend) and roughly triple the
@@ -176,7 +192,7 @@ view from a year loss table (every year, crop and district):
 | 1-in-10 years | $150 M | $108 M ($80 M) |
 | 1-in-20 | $212 M | $196 M ($138 M) |
 | 1-in-50 | $359 M | $308 M ($225 M) |
-| 1-in-100 / 1-in-250 | not reported | $409 M / $514 M |
+| 1-in-100 / 1-in-250 | not reported | $408 M / $514 M |
 | Worst year | $403 M | $739 M (80 % of exposure) |
 
 - **One 60-year record is noisy**: its AAL is 14 % above the catalogue's, inside the interval
@@ -185,7 +201,7 @@ view from a year loss table (every year, crop and district):
   curve's analytic AAL ratio under standard-normal SPEI (3.55 / 3.54 / 4.84 %) within sampling
   noise, and CLIMADA's losses equal a direct computation from the same severity to six decimals.
 - **Diversification shows in the tail**: at 1-in-100 the crops' separate losses add up to $522 M,
-  against $409 M for their annual total.
+  against $408 M for their annual total.
 - **District ranking reflects exposure only**: the synthetic hazard has no regional climate
   differences, so the districts with the largest AAL are the ones with the most crop value.
 
@@ -199,7 +215,7 @@ district after interpolation, to its 2001–2023 mean in the open cells: −0.31
 |---|---|---|---|
 | **AAL** | $35.1 M | **$80.9 M** | ×2.3 |
 | Maize / sunflower / wheat AAL | $13.6 / 13.2 / 8.2 M | $39.6 / 28.4 / 13.0 M | ×2.9 / ×2.2 / ×1.6 |
-| 1-in-10 / 1-in-100 / 1-in-250 | $108 / 409 / 514 M | $264 / 578 / 657 M | ×2.5 / ×1.4 / ×1.3 |
+| 1-in-10 / 1-in-100 / 1-in-250 | $108 / 408 / 514 M | $264 / 578 / 657 M | ×2.5 / ×1.4 / ×1.3 |
 
 A third to a half of a standard deviation more than doubles AAL, because loss only starts at a
 severity of about 1 and then climbs steeply. With each shift one standard error wetter or drier,
@@ -247,7 +263,7 @@ almost no basis risk, by construction.
 |---|---|---|---|---|
 | Binary, stationary / recent | 35.0 / 80.7 | 80 / 124 | 127 / 274 | 390 / 500 |
 | Ramp, stationary / recent | 35.4 / 76.5 | 71 / 106 | 124 / 242 | 333 / 428 |
-| Curve, stationary / recent | 35.1 / 80.9 | 79 / 129 | 108 / 264 | 409 / 578 |
+| Curve, stationary / recent | 35.1 / 80.9 | 79 / 129 | 108 / 264 | 408 / 578 |
 
 The expected payout is the pure premium, before costs and capital. On the 2007–2023 index the
 covers would have paid $136–153 M a year, more than even the recent-climate price; that decade
@@ -324,6 +340,9 @@ Everything lands in `data/processed` (git-ignored):
 | `vulnerability_open_cells.csv` | fitted and anchored curves with their 90 % intervals |
 | `parametric/` | `backtest.csv` (basis-risk measures) and `pricing.csv` |
 
+`figures` draws the README's figures from those outputs into `docs/img`, which is committed: a
+light and a dark PNG of each, and it refuses outputs whose provenance names private data.
+
 ## Reproducibility
 
 On 6 November 2026 the repository was rebuilt from a fresh clone: an environment created from
@@ -351,7 +370,9 @@ no owner. Allow the folder once:
 git config --global --add safe.directory "F:/Drought Loss Moldova CLIMADA"
 ```
 
-## Quick start (Windows, PowerShell)
+## Quick start
+
+### Environment on Windows (PowerShell)
 
 These commands use `F:\`; on another drive with 5 GB free, set `$env:MAMBA_ROOT_PREFIX` and
 `$env:DROUGHT_LOSS_ENV` to match.
@@ -368,32 +389,60 @@ F:\micromamba\micromamba.exe create -y -p F:\envs\drought-loss -f environment.lo
 . .\scripts\dev_env.ps1
 python -m pip install -e . --no-deps
 
+# Only if you have the open SPEI cells (see Data):
+$cells = "F:\Trifan PhD data\Database_SPEI_NUTS"
+$env:DROUGHT_LOSS_OPEN_SPEI = $cells
+```
+
+### Environment on Linux or macOS (conda)
+
+Not yet run end to end off Windows. On 6 November 2026 `environment.yml` solved for linux-64,
+osx-64 and osx-arm64 (a micromamba dry run) to the same CLIMADA, GDAL, NumPy and Python versions
+as the Windows lock file, but there is no lock file for these platforms, so other packages may
+differ from the tested set.
+
+```bash
+# Once (mamba or micromamba read the same file):
+conda env create -f environment.yml
+conda activate drought-loss
+python -m pip install -e . --no-deps
+
+# Only if you have the open SPEI cells (see Data):
+cells="$HOME/spei-cells"
+export DROUGHT_LOSS_OPEN_SPEI="$cells"
+```
+
+### Run the pipeline (either shell)
+
+Forward slashes work in both PowerShell and bash.
+
+```bash
 # Inputs and exposure
 python -m drought_loss download
 python -m drought_loss exposure
 
 # The 60-year record and the 10,000-year catalogue (about 1.5 minutes)
 python -m drought_loss synthetic --years 60
-python -m drought_loss hazard data\processed\synthetic_spei_60y_seed42.csv --out data\processed\hazard_60y
-python -m drought_loss loss data\processed\hazard_60y --out data\processed\loss_60y
+python -m drought_loss hazard data/processed/synthetic_spei_60y_seed42.csv --out data/processed/hazard_60y
+python -m drought_loss loss data/processed/hazard_60y --out data/processed/loss_60y
 python -m drought_loss synthetic --years 10000
-python -m drought_loss hazard data\processed\synthetic_spei_10000y_seed42.csv --out data\processed\hazard_10000y
-python -m drought_loss loss data\processed\hazard_10000y --out data\processed\loss_10000y
+python -m drought_loss hazard data/processed/synthetic_spei_10000y_seed42.csv --out data/processed/hazard_10000y
+python -m drought_loss loss data/processed/hazard_10000y --out data/processed/loss_10000y
 
 # The current-climate sensitivity
-python -m drought_loss hazard data\processed\synthetic_spei_10000y_seed42.csv --out data\processed\hazard_10000y_recent --climate recent
-python -m drought_loss loss data\processed\hazard_10000y_recent --out data\processed\loss_10000y_recent
+python -m drought_loss hazard data/processed/synthetic_spei_10000y_seed42.csv --out data/processed/hazard_10000y_recent --climate recent
+python -m drought_loss loss data/processed/hazard_10000y_recent --out data/processed/loss_10000y_recent
 
-# With the open SPEI cells: calibration, impact functions, the parametric cover
-$cells = "F:\Trifan PhD data\Database_SPEI_NUTS"
-python -m drought_loss calibrate $cells
-python -m drought_loss vulnerability --cells $cells
-python -m drought_loss parametric --cells $cells --catalogue data\processed\hazard_10000y --catalogue data\processed\hazard_10000y_recent
+# With the open SPEI cells: calibration, impact functions, the parametric cover, the figures
+python -m drought_loss calibrate "$cells"
+python -m drought_loss vulnerability --cells "$cells"
+python -m drought_loss parametric --cells "$cells" --catalogue data/processed/hazard_10000y --catalogue data/processed/hazard_10000y_recent
+python -m drought_loss figures
 
 # Tests
 pytest                                  # everything; data tests skip without the cells
 pytest -m "not climada and not data"    # fast tests only
-$env:DROUGHT_LOSS_OPEN_SPEI = $cells; pytest -m data
+pytest -m data                          # needs DROUGHT_LOSS_OPEN_SPEI
 ```
 
 ## Repository layout
@@ -405,7 +454,7 @@ pyproject.toml          package metadata, pytest, ruff and mypy settings
 climada.conf            keeps CLIMADA's data in data/climada, not in the home folder
 src/drought_loss/       the package
   __main__.py           command line: download | synthetic | hazard | exposure | vulnerability |
-                        loss | parametric | calibrate
+                        loss | parametric | figures | calibrate
   config.py             paths, pinned inputs (SHA-256), stations, fitted parameters
   downloads.py          fetching with polite retries; nothing is used until its SHA-256 matches
   synthetic.py          the synthetic SPEI generator, its calibration, the recent-climate shift
@@ -419,9 +468,11 @@ src/drought_loss/       the package
   vulnerability.py      yield anomalies, the curve fit and anchor, CLIMADA impact functions
   loss.py               CLIMADA impacts, year loss table, AAL, exceedance curve, districts
   parametric.py         payout rules, fair pricing, backtest and basis-risk measures
+  figures.py            the README's figures, light and dark, from the public outputs only
 tests/                  pytest suite (markers: `climada` loads CLIMADA, `data` needs the cells,
                         `raw` needs data/raw)
 scripts/dev_env.ps1     prepares a PowerShell window
+docs/img/               the README's figures
 data/                   downloaded inputs and generated outputs (git-ignored)
 ```
 
@@ -440,7 +491,7 @@ against it.**
 
 Run on a synthetic hazard calibrated to open data, the model puts the three crops' drought loss at
 $35 M a year in a stationary climate and about $81 M if the last two decades' summers are the new
-normal, with a 1-in-100-year loss of $409–578 M against $918 M of crop value. The drier climate is
+normal, with a 1-in-100-year loss of $408–578 M against $918 M of crop value. The drier climate is
 the biggest single lever in the model, bigger than any choice about the cover.
 
 The backtest against recorded yields is the sobering part. Even the best payout rule misses a
@@ -464,7 +515,7 @@ one number per crop moves every loss figure with it.
   bad or worse comes along. This model adds all three crops up within each year first, because
   one dry summer hits them together.
 - **PML (probable maximum loss)** is the loss at a chosen return period, typically 1-in-100 or
-  1-in-250: here $409 M and $514 M. Insurers and governments use it to size capital and
+  1-in-250: here $408 M and $514 M. Insurers and governments use it to size capital and
   reinsurance. PMLs do not add up across crops or districts the way AALs do, because their worst
   years are not all the same year.
 - **Basis risk** is the gap between what an index cover pays and what was actually lost. It runs

@@ -44,6 +44,6 @@ files = ["src", "tests"]
 # These ship without type hints, so mypy treats their objects as untyped (Any).
 module = [
     "climada", "climada.*", "geopandas", "geopandas.*", "openpyxl", "openpyxl.*",
-    "pandas", "pandas.*", "scipy", "scipy.*",
+    "pandas", "pandas.*", "scipy", "scipy.*", "shapely", "shapely.*",
 ]
 ignore_missing_imports = true

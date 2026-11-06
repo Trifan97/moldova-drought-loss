@@ -369,6 +369,14 @@ def run_parametric(
     print(out_dir)
 
 
+def draw_figures(out_dir: Path) -> None:
+    # Imported here: matplotlib and its backend are only needed for this stage.
+    from drought_loss import figures
+
+    for path in figures.render_all(config.PROCESSED_DIR, boundaries.DEFAULT_PATH, out_dir):
+        print(path)
+
+
 def recalibrate(cells_dir: Path) -> None:
     cells = open_spei.read_cells(cells_dir)
     fit = synthetic.calibrate(cells)
@@ -449,6 +457,12 @@ def main(argv: list[str] | None = None) -> None:
     param.add_argument(
         "--out", type=Path, default=config.PROCESSED_DIR / "parametric", help="output folder"
     )
+    figures_stage = stages.add_parser(
+        "figures", help="the README's figures from the public outputs, light and dark"
+    )
+    figures_stage.add_argument(
+        "--out", type=Path, default=config.REPO_ROOT / "docs" / "img", help="output folder"
+    )
     vuln = stages.add_parser(
         "vulnerability", help="fit the impact functions to NBS district yields against SPEI"
     )
@@ -472,6 +486,8 @@ def main(argv: list[str] | None = None) -> None:
         build_hazard(args.spei, args.out, args.climate)
     elif args.stage == "loss":
         compute_loss(args.hazard, args.out)
+    elif args.stage == "figures":
+        draw_figures(args.out)
     elif args.stage == "parametric":
         run_parametric(args.cells, args.stations, args.catalogue, args.out)
     elif args.stage == "vulnerability":
