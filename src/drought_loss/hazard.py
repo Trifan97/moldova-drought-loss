@@ -5,7 +5,9 @@ Severity is D = max(0, -SPEI-3), so zero means no drought. CLIMADA stores intens
 matrix in which zero means "no hazard", and its exceedance tools assume larger is worse.
 """
 
+import json
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -16,6 +18,9 @@ from drought_loss import config, synthetic
 from drought_loss.synthetic import FloatArray
 
 HAZARD_TYPE = "DR"
+# Written beside the hazard files: which SPEI file they came from, so later stages can tell
+# private results from public ones without being told.
+PROVENANCE_FILENAME = "provenance.json"
 # The month in which each crop's SPEI-3 is read: the end of its risk period in Moldova
 # (Potopova et al. 2016, Int. J. Climatol. 36:2063, section 4.5 and Table 6). Winter wheat at
 # anthesis and grain fill (April-June), sunflower at flowering and grain fill (May-July), maize
@@ -107,6 +112,17 @@ def crop_severity(
     return (-crop_spei(station_spei, targets, crop, range_km)).clip(lower=0.0)
 
 
+def event_ordinal(year: int, month: int) -> int:
+    """The event's date as the day number CLIMADA stores.
+
+    Python's date stops at year 9999, but a long synthetic catalogue labels its years past that,
+    so later years get the same calendar arithmetic, accurate to a day or so.
+    """
+    if year <= 9999:
+        return date(year, month, 1).toordinal()
+    return date(9999, month, 1).toordinal() + round((year - 9999) * 365.2425)
+
+
 def to_climada(severity: pd.DataFrame, targets: pd.DataFrame, crop: str) -> Any:
     """A CLIMADA hazard with one event per year, each with probability 1 / (number of years)."""
     # Imported here: CLIMADA takes half a minute to load, and nothing else in this module needs it.
@@ -123,7 +139,7 @@ def to_climada(severity: pd.DataFrame, targets: pd.DataFrame, crop: str) -> Any:
         ),
         event_id=np.arange(1, n + 1),
         event_name=[str(year) for year in years],
-        date=np.array([date(year, CROP_MONTHS[crop], 1).toordinal() for year in years]),
+        date=np.array([event_ordinal(year, CROP_MONTHS[crop]) for year in years]),
         # Every year is equally likely: the record is treated as a sample of one, unchanging
         # climate. The README discusses what that assumption costs.
         frequency=np.full(n, 1.0 / n),
@@ -131,6 +147,23 @@ def to_climada(severity: pd.DataFrame, targets: pd.DataFrame, crop: str) -> Any:
         intensity=sparse.csr_matrix(intensity),
         fraction=sparse.csr_matrix((intensity > 0).astype(np.float64)),
     )
+
+
+def write_provenance(out_dir: Path, spei_path: Path, years: pd.Index) -> None:
+    record = {
+        "spei_file": spei_path.name,
+        "first_year": int(years.min()),
+        "last_year": int(years.max()),
+    }
+    (out_dir / PROVENANCE_FILENAME).write_text(json.dumps(record, indent=2), encoding="utf-8")
+
+
+def read_provenance(hazard_dir: Path) -> dict[str, Any]:
+    path = hazard_dir / PROVENANCE_FILENAME
+    if not path.exists():
+        raise FileNotFoundError(f"{path} is missing; rebuild with: python -m drought_loss hazard")
+    record: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    return record
 
 
 def describe(severity: pd.DataFrame) -> dict[str, float]:

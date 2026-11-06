@@ -18,6 +18,7 @@ from drought_loss import (
     exposure,
     fao,
     hazard,
+    loss,
     nbs,
     open_spei,
     spei_input,
@@ -160,6 +161,83 @@ def build_hazard(spei_path: Path, out_dir: Path) -> None:
             f"{crop:<13}{month:>6}{gaps:>6}{summary['share_dry']:>8.3f}"
             f"{summary['share_severe']:>8.3f}{summary['share_years_half_severe']:>19.3f}"
         )
+    hazard.write_provenance(out_dir, spei_path, severity.index)
+    print(out_dir)
+
+
+def compute_loss(hazard_dir: Path, out_dir: Path) -> None:
+    provenance = hazard.read_provenance(hazard_dir)
+    # Checked before CLIMADA loads, so a refused run stops at once.
+    spei_input.check_output_location(Path(provenance["spei_file"]), out_dir)
+    from climada.hazard import Hazard
+
+    exposure_table = exposure.build(
+        nbs.read_district_table(), nbs.read_national_table(), fao.read_prices()
+    )
+    centroids = boundaries.district_centroids()
+    functions = vulnerability.impact_functions(vulnerability.calibrated_curves())
+    impacts, exposures = {}, {}
+    for crop in hazard.CROP_MONTHS:
+        exposures[crop] = exposure.to_climada(exposure_table, centroids, crop)
+        crop_hazard = Hazard.from_hdf5(hazard_dir / f"hazard_{crop}.hdf5")
+        impacts[crop] = loss.crop_impact(crop_hazard, exposures[crop], functions)
+    table = loss.year_loss_table(impacts, exposures)
+    annual = loss.annual_losses(table)
+    commercial = loss.commercial_annual_losses(table, exposure_table)
+    n_years = len(annual)
+    periods = loss.reportable(loss.RETURN_PERIODS, n_years)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    table.to_csv(out_dir / "year_loss_table.csv", index=False)
+    districts = loss.by_district(table, exposure_table)
+    districts.to_csv(out_dir / "aal_by_district.csv")
+
+    m = 1e6
+    print(
+        f"{provenance['spei_file']}: {provenance['first_year']}-{provenance['last_year']}"
+        f" ({n_years} years)"
+    )
+    aal = loss.average_annual_loss(table)
+    value = exposure_table.groupby("crop")["value_usd"].sum()
+    share = loss.commercial_share(exposure_table)
+    print(f"\n{'AAL, US$ M':<14}{'all producers':>14}{'commercial':>12}{'loss ratio':>12}")
+    for crop in hazard.CROP_MONTHS:
+        print(
+            f"{crop:<14}{aal[crop] / m:>14.1f}{aal[crop] * share[crop] / m:>12.1f}"
+            f"{aal[crop] / value[crop]:>12.2%}"
+        )
+    print(
+        f"{'total':<14}{aal.sum() / m:>14.1f}{commercial.mean() / m:>12.1f}"
+        f"{aal.sum() / value.sum():>12.2%}"
+    )
+
+    curve = loss.exceedance(annual, periods)
+    curve_commercial = loss.exceedance(commercial, periods)
+    by_crop = table.groupby(["crop", "year"])["loss_usd"].sum()
+    crop_sum = sum(loss.exceedance(by_crop.loc[crop], periods) for crop in hazard.CROP_MONTHS)
+    print(f"\n{'Return period':<14}{'all producers':>14}{'commercial':>12}{'sum of crops':>14}")
+    for t in periods:
+        row = [curve[t] / m, curve_commercial[t] / m, crop_sum[t] / m]
+        print(f"{t:>8} yr    {row[0]:>14.1f}{row[1]:>12.1f}{row[2]:>14.1f}")
+    longer = [t for t in loss.RETURN_PERIODS if t > n_years]
+    if longer:
+        print(f"  (not reported: {longer} years, longer than the {n_years}-year record)")
+    if n_years <= 1000:
+        spread = loss.bootstrap(annual, periods, 1000, 0).quantile([0.05, 0.95]) / m
+        print("90% interval from resampling the record's years:")
+        print(f"  AAL {spread['aal'].iloc[0]:.1f}-{spread['aal'].iloc[1]:.1f}")
+        for t in periods:
+            print(f"  {t:>4} yr {spread[t].iloc[0]:.1f}-{spread[t].iloc[1]:.1f}")
+
+    worst = annual.sort_values(ascending=False).head(5)
+    print("\nWorst years (US$ M):", ", ".join(f"{y}: {v / m:.0f}" for y, v in worst.items()))
+    print("\nDistricts with the largest AAL:")
+    print(
+        (districts.head(8)[["aal_usd", "exposure_usd"]] / m)
+        .round(1)
+        .join(districts.head(8)[["loss_ratio", "share_of_aal"]].round(3))
+        .to_string()
+    )
     print(out_dir)
 
 
@@ -213,6 +291,13 @@ def main(argv: list[str] | None = None) -> None:
     build.add_argument(
         "--out", type=Path, default=config.PROCESSED_DIR / "hazard", help="output folder"
     )
+    loss_stage = stages.add_parser(
+        "loss", help="AAL, exceedance curve and loss by district, from a hazard folder"
+    )
+    loss_stage.add_argument("hazard", type=Path, help="folder written by the hazard stage")
+    loss_stage.add_argument(
+        "--out", type=Path, default=config.PROCESSED_DIR / "loss", help="output folder"
+    )
     vuln = stages.add_parser(
         "vulnerability", help="fit the impact functions to NBS district yields against SPEI"
     )
@@ -234,6 +319,8 @@ def main(argv: list[str] | None = None) -> None:
         write_synthetic(args.years, args.seed)
     elif args.stage == "hazard":
         build_hazard(args.spei, args.out)
+    elif args.stage == "loss":
+        compute_loss(args.hazard, args.out)
     elif args.stage == "vulnerability":
         fit_vulnerability(args.cells, args.stations, args.out)
     else:

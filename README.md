@@ -5,9 +5,9 @@ A catastrophe-risk model of agricultural drought in Moldova, built on
 vulnerability gives loss. It will report Average Annual Loss, a loss exceedance curve, loss
 by district, and a parametric insurance trigger with its basis risk.
 
-> **Status: step 5 of 9.** The synthetic drought generator, the crop-season hazard, the exposure
-> and the impact functions work and are tested. The loss calculation is next, so there are no
-> loss results yet.
+> **Status: step 6 of 9.** Hazard, exposure, impact functions and the loss calculation work and
+> are tested; the results below come from **synthetic** drought data. The parametric trigger and
+> its basis risk are next.
 
 ## Data
 
@@ -198,6 +198,61 @@ recent climate belongs in the hazard, not the curve: see the trend under Synthet
 - **Winter wheat stops at D = 1.98.** No June in 2007–2023 was drier, so harsher wheat droughts
   get the D = 1.98 loss, although the 2007 national wheat loss of 50 % suggests more.
 
+## Loss
+
+`python -m drought_loss loss <hazard folder>` runs each crop's hazard, exposure and impact
+function through CLIMADA, then builds the annual view from a year loss table (every year, crop
+and district):
+
+- **AAL** is the mean annual loss. Means add, so the crops' AALs sum to the total.
+- **Exceedance curve.** The loss exceeded on average once every T years, from each year's total
+  over all crops and districts (the aggregate, or AEP, view: one drought year hits all three
+  crops). It uses CLIMADA's rule, the k-th largest of N years has return period N / k, and a test
+  checks it gives the same numbers as CLIMADA's own curve.
+- **No return period beyond the record.** From 60 years the worst year is all there is; CLIMADA
+  would return it for any longer return period, so longer ones are refused.
+
+Results, all producers (commercial farms only in brackets), synthetic hazard:
+
+| | 60-year record (seed 42) | 10,000-year catalogue |
+|---|---|---|
+| **AAL** | $39.9 M ($30.5 M), 90 % interval $24–56 M | **$35.1 M ($25.8 M)** |
+| AAL / exposure | 4.35 % | 3.82 % |
+| 1-in-10 years | $150 M | $108 M ($80 M) |
+| 1-in-20 | $212 M | $196 M ($138 M) |
+| 1-in-50 | $359 M | $308 M ($225 M) |
+| 1-in-100 | not reported | $409 M ($290 M) |
+| 1-in-250 | not reported | $514 M ($368 M) |
+| Worst year | $403 M | $739 M (80 % of exposure) |
+
+| AAL by crop (10,000 years) | US$ M | Loss ratio | Analytic loss ratio, SPEI ~ N(0, 1) |
+|---|---|---|---|
+| Winter wheat | 8.2 | 3.51 % | 3.55 % |
+| Sunflower | 13.2 | 3.43 % | 3.54 % |
+| Maize | 13.6 | 4.56 % | 4.84 % |
+
+**Reading it:**
+
+- **One 60-year record is a noisy sample.** Its AAL is 14 % above the catalogue's, well inside
+  the interval from resampling its years; with 60 years, every number above is uncertain by tens
+  of percent. The catalogue pins the model's own answer down, not the real world's.
+- **The pieces agree.** Each crop's loss ratio in the catalogue matches the analytic AAL ratio of
+  its curve under standard-normal SPEI, as it should: the interpolation keeps SPEI standard normal
+  at every district. The remaining gap is sampling noise; maize loss sits in the tail, and five
+  other 2,000-year seeds put it anywhere from 4.2 % to 5.0 %. CLIMADA's losses equal a direct
+  computation from the same severity to six decimals.
+- **Diversification shows in the tail.** At 1-in-100 the crops' separate losses add up to $522 M,
+  against $409 M for their annual total: one crop's worst year is not always another's. At
+  1-in-2 it is the other way round, because small losses in different years add up.
+- **District ranking reflects exposure only.** The synthetic hazard has no regional climate
+  differences, so the districts with the largest AAL (Drochia, Gagauzia, Floresti) are simply the
+  ones with the most crop value, and loss ratios differ only through crop mix (3.5–4.0 %).
+
+**What it leaves out:** the long-run climate. Every number above assumes a stationary climate
+centred on the open cells' 1950–2023 normal; in the cells, 2001–2023 summers ran drier (mean
+August SPEI-3 −0.66), so today's risk is likely higher. Losses also count only the three crops,
+with prices held fixed.
+
 ## Quick start (Windows, PowerShell)
 
 CLIMADA needs compiled GDAL, which pip cannot build on Windows, so the environment comes from
@@ -227,7 +282,13 @@ python -m drought_loss exposure                 # crop value per district into d
 pytest                                          # everything (data tests skip without the cells)
 pytest -m "not climada and not data"            # fast tests only
 python -m drought_loss synthetic --years 60     # CSV into data/processed
-python -m drought_loss hazard data\processed\synthetic_spei_60y_seed42.csv   # into data/processed/hazard
+python -m drought_loss hazard data\processed\synthetic_spei_60y_seed42.csv --out data\processed\hazard_60y
+python -m drought_loss loss data\processed\hazard_60y --out data\processed\loss_60y
+
+# The long catalogue (1.5 minutes end to end):
+python -m drought_loss synthetic --years 10000
+python -m drought_loss hazard data\processed\synthetic_spei_10000y_seed42.csv --out data\processed\hazard_10000y
+python -m drought_loss loss data\processed\hazard_10000y --out data\processed\loss_10000y
 
 # Re-fit the generator, and run the data tests, with the open SPEI cell workbooks:
 python -m drought_loss calibrate "F:\Trifan PhD data\Database_SPEI_NUTS"
@@ -256,7 +317,7 @@ pyproject.toml          package metadata, pytest, ruff and mypy settings
 climada.conf            keeps CLIMADA's data in data/climada, not in the home folder
 src/drought_loss/       the package
   __main__.py           command line: python -m drought_loss download | synthetic | hazard |
-                        exposure | vulnerability | calibrate
+                        exposure | vulnerability | loss | calibrate
   config.py             paths, pinned inputs (SHA-256), stations, the generator's parameters
   downloads.py          fetching with polite retries; nothing is used until its SHA-256 matches
   synthetic.py          the synthetic SPEI generator and its calibration
@@ -268,6 +329,7 @@ src/drought_loss/       the package
   fao.py                FAOSTAT producer prices for Moldova
   exposure.py           crop value per district, its reconciliation, and CLIMADA exposures
   vulnerability.py      yield anomalies, the curve fit, year bootstrap, CLIMADA impact functions
+  loss.py               CLIMADA impacts, year loss table, AAL, exceedance curve, districts
 tests/                  pytest suite (markers: `climada` loads CLIMADA, `data` needs the cells,
                         `raw` needs data/raw)
 scripts/dev_env.ps1     prepares a PowerShell window
