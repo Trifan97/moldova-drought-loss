@@ -21,6 +21,7 @@ from drought_loss import (
     loss,
     nbs,
     open_spei,
+    parametric,
     spei_input,
     synthetic,
     vulnerability,
@@ -248,6 +249,126 @@ def compute_loss(hazard_dir: Path, out_dir: Path) -> None:
     print(out_dir)
 
 
+def run_parametric(
+    cells_dir: Path | None, stations: Path | None, catalogues: list[Path], out_dir: Path
+) -> None:
+    # Every source is checked before anything is computed, so a private run stops at once.
+    if stations is not None:
+        spei_input.check_output_location(stations, out_dir)
+    for catalogue in catalogues:
+        provenance = hazard.read_provenance(catalogue)
+        spei_input.check_output_location(Path(provenance["spei_file"]), out_dir)
+    if stations is not None:
+        site_spei, sites, label = spei_input.read_station_spei(stations), None, "station index"
+    else:
+        assert cells_dir is not None
+        site_spei, sites = open_spei.as_sites(open_spei.read_cells(cells_dir))
+        label = "open-cell index"
+
+    exposure_table = exposure.build(
+        nbs.read_district_table(), nbs.read_national_table(), fao.read_prices()
+    )
+    centroids = boundaries.district_centroids()
+    anomalies = vulnerability.yield_anomalies(nbs.read_district_table())
+    curves = vulnerability.calibrated_curves()
+    products = {crop: parametric.fair_products(curve) for crop, curve in curves.items()}
+    values = {
+        crop: exposure_table[exposure_table["crop"] == crop].set_index("district")["value_usd"]
+        for crop in curves
+    }
+
+    print("Payout rules, each with expected payout equal to the crop's AAL (stationary climate):")
+    for crop, (bin_rule, ramp_rule, _) in products.items():
+        fraction = float(bin_rule.payout(10.0))
+        limit = float(ramp_rule.payout(10.0))
+        print(
+            f"  {crop:<13} binary pays {fraction:.0%} at SPEI-3 <= -{parametric.TRIGGER};"
+            f" ramp pays up to {limit:.0%} (from -{parametric.ATTACH} to -{parametric.EXHAUST})"
+        )
+
+    backtest = []
+    for crop in curves:
+        spei = hazard.crop_spei(site_spei, centroids, crop, sites=sites)
+        rows = parametric.backtest_rows(
+            anomalies[anomalies["crop"] == crop], spei, values[crop], nbs.DISTRICTS
+        )
+        for product in products[crop]:
+            backtest.append(
+                parametric.with_payout(rows, product).assign(crop=crop, product=product.name)
+            )
+    paid = pd.concat(backtest, ignore_index=True)
+    years = paid["year"]
+    print(
+        f"\nBacktest against NBS district yields, {years.min()}-{years.max()}, {label}"
+        f" (severe loss: >= {parametric.SEVERE_LOSS:.0%} below trend;"
+        f" little loss: < {parametric.LITTLE_LOSS:.0%}):"
+    )
+    # corr: timing alone (the best hedge any rescaling could reach is corr squared);
+    # HE: timing and size together; paid/loss: total payout over total recorded loss.
+    header = [
+        "severe",
+        "missed",
+        "little",
+        "paid/loss",
+        "corr dist",
+        "HE dist",
+        "corr nat",
+        "HE nat",
+    ]
+    print(f"{'':<22}" + "".join(f"{h:>10}" for h in header))
+    records = []
+    groups = [(crop, paid[paid["crop"] == crop]) for crop in curves] + [("all crops", paid)]
+    for crop, group in groups:
+        for name, rows in group.groupby("product", sort=False):
+            metrics = parametric.basis_risk(rows)
+            records.append({"crop": crop, "product": name, **metrics})
+            cells = [
+                f"{metrics['severe_losses']:.0f}",
+                f"{metrics['severe_missed']:.0%}",
+                f"{metrics['paid_little_loss']:.0%}",
+                f"{metrics['payout_over_loss']:.2f}",
+                f"{metrics['correlation_district']:.2f}",
+                f"{metrics['hedge_district']:.2f}",
+                f"{metrics['correlation_national']:.2f}",
+                f"{metrics['hedge_national']:.2f}",
+            ]
+            print(f"{crop + ' / ' + str(name):<22}" + "".join(f"{c:>10}" for c in cells))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(records).to_csv(out_dir / "backtest.csv", index=False)
+
+    pricing = []
+    for catalogue in catalogues:
+        provenance = hazard.read_provenance(catalogue)
+        climate = provenance.get("climate", "stationary")
+        n_years = provenance["last_year"] - provenance["first_year"] + 1
+        totals: dict[str, pd.Series] = {}
+        for crop in curves:
+            severity = pd.read_csv(catalogue / f"severity_{crop}.csv", index_col="year")
+            for product in products[crop]:
+                annual = parametric.catalogue_payouts(severity, values[crop], product)
+                totals[product.name] = totals.get(product.name, 0.0) + annual
+        periods = loss.reportable([10, 100], n_years)
+        for name, annual in totals.items():
+            curve = loss.exceedance(annual, periods)
+            pricing.append(
+                {
+                    "climate": climate,
+                    "years": n_years,
+                    "product": name,
+                    "expected_payout_usd": annual.mean(),
+                    "payout_sd_usd": annual.std(),
+                    **{f"payout_1_in_{t}_usd": curve[t] for t in periods},
+                }
+            )
+    if pricing:
+        table = pd.DataFrame(pricing)
+        table.to_csv(out_dir / "pricing.csv", index=False)
+        print("\nPricing on the synthetic catalogues (US$ M, all three crops):")
+        shown = table.set_index(["climate", "product"]).drop(columns="years") / 1e6
+        print(shown.round(1).to_string())
+    print(out_dir)
+
+
 def recalibrate(cells_dir: Path) -> None:
     cells = open_spei.read_cells(cells_dir)
     fit = synthetic.calibrate(cells)
@@ -316,6 +437,18 @@ def main(argv: list[str] | None = None) -> None:
     loss_stage.add_argument(
         "--out", type=Path, default=config.PROCESSED_DIR / "loss", help="output folder"
     )
+    param = stages.add_parser(
+        "parametric", help="payout rules: backtest against NBS yields, price on catalogues"
+    )
+    index = param.add_mutually_exclusive_group(required=True)
+    index.add_argument("--cells", type=Path, help="index from the open MD0*.xlsm cells (public)")
+    index.add_argument("--stations", type=Path, help="index from a station SPEI CSV (private)")
+    param.add_argument(
+        "--catalogue", type=Path, action="append", default=[], help="hazard folder to price on"
+    )
+    param.add_argument(
+        "--out", type=Path, default=config.PROCESSED_DIR / "parametric", help="output folder"
+    )
     vuln = stages.add_parser(
         "vulnerability", help="fit the impact functions to NBS district yields against SPEI"
     )
@@ -339,6 +472,8 @@ def main(argv: list[str] | None = None) -> None:
         build_hazard(args.spei, args.out, args.climate)
     elif args.stage == "loss":
         compute_loss(args.hazard, args.out)
+    elif args.stage == "parametric":
+        run_parametric(args.cells, args.stations, args.catalogue, args.out)
     elif args.stage == "vulnerability":
         fit_vulnerability(args.cells, args.stations, args.out)
     else:

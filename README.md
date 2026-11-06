@@ -5,9 +5,9 @@ A catastrophe-risk model of agricultural drought in Moldova, built on
 vulnerability gives loss. It will report Average Annual Loss, a loss exceedance curve, loss
 by district, and a parametric insurance trigger with its basis risk.
 
-> **Status: step 6 of 9.** Hazard, exposure, impact functions and the loss calculation work and
-> are tested; the results below come from **synthetic** drought data. The parametric trigger and
-> its basis risk are next.
+> **Status: step 7 of 9.** Hazard, exposure, impact functions, the loss calculation and the
+> parametric cover work and are tested. Loss results come from **synthetic** drought data; the
+> basis-risk backtest uses recorded NBS yields and open SPEI. The write-up and verdict are next.
 
 ## Data
 
@@ -285,6 +285,80 @@ the open cells, and the same 10,000-year catalogue is run again:
 
 **What it leaves out:** losses count only the three crops, with prices held fixed.
 
+## Parametric cover and basis risk
+
+`python -m drought_loss parametric --cells <folder> --catalogue <hazard folder> ...` designs an
+index cover that pays on each district's SPEI-3 in the crop's window, then asks two questions:
+how well would it have matched what farmers actually lost, and what does it cost?
+
+**Three payout rules, at the same price.** Each is scaled so its expected payout under the
+stationary hazard equals the crop's modelled AAL, so they can be compared at equal cost:
+
+| Rule | Pays | Winter wheat | Sunflower | Maize |
+|---|---|---|---|---|
+| Binary | a fixed share of insured value when SPEI-3 ≤ −1.5 | 53 % | 53 % | 72 % |
+| Ramp | from nothing at SPEI-3 = −1.0 up to a limit at −2.0 | limit 48 % | 47 % | 65 % |
+| Curve | the model's own damage curve | | | |
+
+**Basis risk, measured against what happened.** Comparing payouts with modelled losses from the
+same index would show almost no basis risk, by construction. So each rule is backtested against
+the yield shortfall NBS recorded in 35 districts over 2007–2023, with SPEI from the open cells as
+the index: 595 district-years per crop. "Severe" means at least 30 % below trend, "little" less
+than 10 %.
+
+| All three crops | Binary | Ramp | Curve |
+|---|---|---|---|
+| Severe district losses with no payout (of 322) | 37 % | **22 %** | 22 % |
+| Payouts on districts with little loss | 29 % | 39 % | 38 % |
+| Correlation of payout and loss, district / national | 0.53 / 0.66 | **0.58 / 0.66** | 0.56 / 0.65 |
+| Hedge effectiveness, district / national | −0.31 / 0.15 | **0.14 / 0.32** | −0.35 / 0.07 |
+| Payouts ÷ recorded losses, 2007–2023 | 1.31 | 1.17 | 1.31 |
+
+Hedge effectiveness is the share of the loss's variance a payout removes, 1 − Var(loss − payout)
+/ Var(loss): 1 is a perfect hedge, 0 no better than no cover, below 0 worse than none. It depends
+on timing and size together; correlation measures timing alone, and the best any rescaling of a
+payout can reach is the correlation squared.
+
+**Reading it:**
+
+- **At district level, basis risk is large whatever the design.** Correlations of 0.34–0.62 by
+  crop mean that even a perfectly sized payout would remove at most 11–38 % of a district's loss
+  variance. SPEI-3 in one month misses frost, wet years, pests and drought that falls outside the
+  window, and the recorded loss counts all of them.
+- **It shrinks when districts are added up.** Nationally the correlation rises to 0.66, because
+  one district's noise offsets another's. That is the case for covers held by a government or an
+  aggregator rather than by each farm.
+- **The binary trigger is the worst design.** Its cliff edge at −1.5 misses 37 % of severe losses
+  (58 % for wheat) and pays a fixed amount whether the drought was just over the line or extreme.
+- **The ramp is the best, and the curve is not.** The ramp misses the fewest severe losses and is
+  the only rule that helps at both levels. The curve, the most model-like payout, pays most on
+  the steep top end of the damage curve, where an index error costs most.
+- **Too much, in the wrong places.** Over 2007–2023 all three paid more than the recorded losses
+  in total, and more than a fifth of payouts went to districts with little loss, which is why
+  district hedge effectiveness can fall below zero even with positive correlation.
+
+**Price.** On the 10,000-year catalogues, all three products (US$ M):
+
+| | Expected payout | Payout standard deviation | 1-in-10 payout | 1-in-100 payout |
+|---|---|---|---|---|
+| Binary, stationary / recent climate | 35.0 / 80.7 | 80 / 124 | 127 / 274 | 390 / 500 |
+| Ramp, stationary / recent climate | 35.4 / 76.5 | 71 / 106 | 124 / 242 | 333 / 428 |
+| Curve, stationary / recent climate | 35.1 / 80.9 | 79 / 129 | 108 / 264 | 409 / 578 |
+
+- **The expected payout is the pure premium**, before an insurer's costs and capital charge.
+  Priced on the stationary climate it is $35 M; if recent summers are the new normal, $77–81 M.
+- **Climate risk is pricing risk.** Played back on the 2007–2023 index, the same covers would have
+  paid $136–153 M a year, more than even the recent-climate price. That decade began with the 2007
+  drought, and the backtest index is gridded rather than station-like, so the comparison is
+  rough, but its direction is clear: a cover priced on a long-run average in a drying climate
+  loses money.
+- **The ramp's limit protects the insurer too.** It has the lowest payout spread and 1-in-100
+  payout of the three, because it can never pay more than its limit.
+
+**What it leaves out:** one index location per district (its centroid), one month per crop, no
+deductibles, loadings or reinsurance structure, and only 17 years of yields with about five
+severe droughts behind the backtest.
+
 ## Quick start (Windows, PowerShell)
 
 CLIMADA needs compiled GDAL, which pip cannot build on Windows, so the environment comes from
@@ -326,6 +400,9 @@ python -m drought_loss loss data\processed\hazard_10000y --out data\processed\lo
 python -m drought_loss hazard data\processed\synthetic_spei_10000y_seed42.csv --out data\processed\hazard_10000y_recent --climate recent
 python -m drought_loss loss data\processed\hazard_10000y_recent --out data\processed\loss_10000y_recent
 
+# The parametric cover: backtest on the open cells, priced on both catalogues
+python -m drought_loss parametric --cells "F:\Trifan PhD data\Database_SPEI_NUTS" --catalogue data\processed\hazard_10000y --catalogue data\processed\hazard_10000y_recent
+
 # Re-fit the generator, and run the data tests, with the open SPEI cell workbooks:
 python -m drought_loss calibrate "F:\Trifan PhD data\Database_SPEI_NUTS"
 python -m drought_loss vulnerability --cells "F:\Trifan PhD data\Database_SPEI_NUTS"
@@ -353,7 +430,7 @@ pyproject.toml          package metadata, pytest, ruff and mypy settings
 climada.conf            keeps CLIMADA's data in data/climada, not in the home folder
 src/drought_loss/       the package
   __main__.py           command line: python -m drought_loss download | synthetic | hazard |
-                        exposure | vulnerability | loss | calibrate
+                        exposure | vulnerability | loss | parametric | calibrate
   config.py             paths, pinned inputs (SHA-256), stations, the generator's parameters
   downloads.py          fetching with polite retries; nothing is used until its SHA-256 matches
   synthetic.py          the synthetic SPEI generator and its calibration
@@ -366,6 +443,7 @@ src/drought_loss/       the package
   exposure.py           crop value per district, its reconciliation, and CLIMADA exposures
   vulnerability.py      yield anomalies, the curve fit, year bootstrap, CLIMADA impact functions
   loss.py               CLIMADA impacts, year loss table, AAL, exceedance curve, districts
+  parametric.py         payout rules, fair pricing, backtest and basis-risk measures
 tests/                  pytest suite (markers: `climada` loads CLIMADA, `data` needs the cells,
                         `raw` needs data/raw)
 scripts/dev_env.ps1     prepares a PowerShell window
