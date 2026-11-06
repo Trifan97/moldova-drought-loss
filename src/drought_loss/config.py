@@ -63,6 +63,17 @@ SYNTHETIC_RANGE_KM = 605.0
 SYNTHETIC_LAG1 = 0.103
 SYNTHETIC_SEED = 42
 
+# Current-climate sensitivity: how far each crop month's SPEI-3 has run from its full-record
+# (1950-2023) mean since 2001, in the same open cells, averaged over cells. Standard errors are
+# about 0.2 (23 years), so only maize's August shift is clearly beyond noise. Added to every
+# district's SPEI-3 by `python -m drought_loss hazard --climate recent`.
+RECENT_CLIMATE_FIRST_YEAR = 2001
+RECENT_CLIMATE_SHIFT: dict[str, float] = {
+    "winter_wheat": -0.312,
+    "sunflower": -0.408,
+    "maize": -0.587,
+}
+
 # Impact functions, fitted by `python -m drought_loss vulnerability --cells <folder>` on public
 # data only: NBS district yields over their Theil-Sen trend, against SPEI-3 from the same open
 # CSIC cells, 2007-2023. Per crop: anomaly = a + b SPEI + c SPEI^2, used up to the largest

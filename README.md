@@ -47,7 +47,8 @@ Against the same cells, the generator reproduces:
 
 - **No climate trend.** In the open cells, mean August SPEI-3 moved from +0.33 (1951–1980) to
   −0.66 (2001–2023). A stationary generator averages over that shift, so it understates
-  drought frequency in today's climate.
+  drought frequency in today's climate; the current-climate sensitivity under Loss measures how
+  much.
 - **No joint extremes beyond the Gaussian.** The generator produces fewer nationwide drought
   years than observed (5.5 % against 8.1 %). With only 74 years the observed share has a 95 %
   interval of about 3 % to 17 %, so the data cannot settle the gap. Before 1990, joint
@@ -248,10 +249,41 @@ Results, all producers (commercial farms only in brackets), synthetic hazard:
   differences, so the districts with the largest AAL (Drochia, Gagauzia, Floresti) are simply the
   ones with the most crop value, and loss ratios differ only through crop mix (3.5–4.0 %).
 
-**What it leaves out:** the long-run climate. Every number above assumes a stationary climate
-centred on the open cells' 1950–2023 normal; in the cells, 2001–2023 summers ran drier (mean
-August SPEI-3 −0.66), so today's risk is likely higher. Losses also count only the three crops,
-with prices held fixed.
+### Current-climate sensitivity
+
+Every number above assumes a stationary climate centred on the open cells' 1950–2023 normal.
+Since 2001, summers have run drier. `python -m drought_loss hazard <csv> --climate recent`
+shifts each crop month's SPEI-3, at every district after interpolation, to its 2001–2023 mean in
+the open cells, and the same 10,000-year catalogue is run again:
+
+| Crop (month) | SPEI-3 shift since 2001 | Standard error (23 years) |
+|---|---|---|
+| Winter wheat (June) | −0.31 | 0.21 |
+| Sunflower (July) | −0.41 | 0.21 |
+| Maize (August) | −0.59 | 0.19 |
+
+| All producers | Stationary climate | Recent climate | Ratio |
+|---|---|---|---|
+| **AAL** | $35.1 M (3.8 %) | **$80.9 M (8.8 %)** | ×2.3 |
+| Maize / sunflower / wheat AAL | $13.6 / 13.2 / 8.2 M | $39.6 / 28.4 / 13.0 M | ×2.9 / ×2.2 / ×1.6 |
+| 1-in-10 years | $108 M | $264 M | ×2.5 |
+| 1-in-100 | $409 M | $578 M | ×1.4 |
+| 1-in-250 | $514 M | $657 M | ×1.3 |
+
+- **A small shift, a large effect.** Moving the mean by a third to a half of a standard deviation
+  more than doubles AAL, because loss only starts at a severity of about 1 and then climbs
+  steeply: a drier mean pushes many more years past that threshold. The tail rises less, because
+  the worst years already approach the whole exposure.
+- **The shift is uncertain.** With each shift one standard error wetter or drier, AAL is $60 M or
+  $111 M (analytic); even the wetter end is well above the stationary $36 M. Only maize's
+  August shift is clearly beyond year-to-year noise.
+- **The pieces agree here too.** Simulated loss ratios (5.5 / 7.4 / 13.3 %) match the analytic
+  values for the shifted climate (5.6 / 7.5 / 13.7 %).
+- **What it is not.** A shifted mean of the last 23 years, not a climate projection: it assumes
+  the spread and spatial pattern of droughts are unchanged, and says nothing about the future
+  beyond "if recent summers are the new normal".
+
+**What it leaves out:** losses count only the three crops, with prices held fixed.
 
 ## Quick start (Windows, PowerShell)
 
@@ -289,6 +321,10 @@ python -m drought_loss loss data\processed\hazard_60y --out data\processed\loss_
 python -m drought_loss synthetic --years 10000
 python -m drought_loss hazard data\processed\synthetic_spei_10000y_seed42.csv --out data\processed\hazard_10000y
 python -m drought_loss loss data\processed\hazard_10000y --out data\processed\loss_10000y
+
+# The current-climate sensitivity: the same catalogue, SPEI shifted to its 2001-2023 mean
+python -m drought_loss hazard data\processed\synthetic_spei_10000y_seed42.csv --out data\processed\hazard_10000y_recent --climate recent
+python -m drought_loss loss data\processed\hazard_10000y_recent --out data\processed\loss_10000y_recent
 
 # Re-fit the generator, and run the data tests, with the open SPEI cell workbooks:
 python -m drought_loss calibrate "F:\Trifan PhD data\Database_SPEI_NUTS"

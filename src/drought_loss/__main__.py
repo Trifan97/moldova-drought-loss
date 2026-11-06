@@ -139,19 +139,26 @@ def write_synthetic(n_years: int, seed: int) -> None:
     print(path)
 
 
-def build_hazard(spei_path: Path, out_dir: Path) -> None:
+def build_hazard(spei_path: Path, out_dir: Path, climate: str = "stationary") -> None:
     spei_input.check_output_location(spei_path, out_dir)
+    shifts = (
+        dict(config.RECENT_CLIMATE_SHIFT)
+        if climate == "recent"
+        else {crop: 0.0 for crop in hazard.CROP_MONTHS}
+    )
     station_spei = spei_input.read_station_spei(spei_path)
     targets = boundaries.district_centroids()
     out_dir.mkdir(parents=True, exist_ok=True)
     n_stations, years = station_spei.station.nunique(), station_spei.year
     print(
         f"{spei_path.name}: {n_stations} stations, {years.min()}-{years.max()}, "
-        f"{len(targets)} districts"
+        f"{len(targets)} districts, {climate} climate"
     )
+    if climate == "recent":
+        print("SPEI-3 shift per crop:", ", ".join(f"{c} {s:+.3f}" for c, s in shifts.items()))
     print(f"{'crop':<13}{'month':>6}{'gaps':>6}{'dry':>8}{'D>=1.5':>8}{'years half D>=1.5':>19}")
     for crop, month in hazard.CROP_MONTHS.items():
-        severity = hazard.crop_severity(station_spei, targets, crop)
+        severity = hazard.crop_severity(station_spei, targets, crop, shift=shifts[crop])
         severity.to_csv(out_dir / f"severity_{crop}.csv")
         hazard.to_climada(severity, targets, crop).write_hdf5(out_dir / f"hazard_{crop}.hdf5")
         # Station-years with no value in this month, each left out of that year's interpolation.
@@ -161,7 +168,7 @@ def build_hazard(spei_path: Path, out_dir: Path) -> None:
             f"{crop:<13}{month:>6}{gaps:>6}{summary['share_dry']:>8.3f}"
             f"{summary['share_severe']:>8.3f}{summary['share_years_half_severe']:>19.3f}"
         )
-    hazard.write_provenance(out_dir, spei_path, severity.index)
+    hazard.write_provenance(out_dir, spei_path, severity.index, climate, shifts)
     print(out_dir)
 
 
@@ -195,7 +202,7 @@ def compute_loss(hazard_dir: Path, out_dir: Path) -> None:
     m = 1e6
     print(
         f"{provenance['spei_file']}: {provenance['first_year']}-{provenance['last_year']}"
-        f" ({n_years} years)"
+        f" ({n_years} years), {provenance.get('climate', 'stationary')} climate"
     )
     aal = loss.average_annual_loss(table)
     value = exposure_table.groupby("crop")["value_usd"].sum()
@@ -247,6 +254,11 @@ def recalibrate(cells_dir: Path) -> None:
     print(f"cells: {fit.n_sites}, months {fit.first_month} to {fit.last_month}")
     print(f"range_km  fitted {fit.range_km:8.1f}   in config.py {config.SYNTHETIC_RANGE_KM:8.1f}")
     print(f"lag1      fitted {fit.lag1:8.4f}   in config.py {config.SYNTHETIC_LAG1:8.4f}")
+    first = config.RECENT_CLIMATE_FIRST_YEAR
+    for crop, month in hazard.CROP_MONTHS.items():
+        shift = synthetic.recent_climate_shift(cells, month, first)
+        pinned = config.RECENT_CLIMATE_SHIFT[crop]
+        print(f"shift since {first}, {crop:<12} fitted {shift:+8.4f}   in config.py {pinned:+8.4f}")
 
     # The check that matters for the loss tail: how often is most of the country dry at once?
     # Simulate at the cells themselves (not the stations), so like is compared with like.
@@ -291,6 +303,12 @@ def main(argv: list[str] | None = None) -> None:
     build.add_argument(
         "--out", type=Path, default=config.PROCESSED_DIR / "hazard", help="output folder"
     )
+    build.add_argument(
+        "--climate",
+        choices=["stationary", "recent"],
+        default="stationary",
+        help="recent: shift each crop month's SPEI-3 to its 2001-2023 mean (a sensitivity)",
+    )
     loss_stage = stages.add_parser(
         "loss", help="AAL, exceedance curve and loss by district, from a hazard folder"
     )
@@ -318,7 +336,7 @@ def main(argv: list[str] | None = None) -> None:
     elif args.stage == "synthetic":
         write_synthetic(args.years, args.seed)
     elif args.stage == "hazard":
-        build_hazard(args.spei, args.out)
+        build_hazard(args.spei, args.out, args.climate)
     elif args.stage == "loss":
         compute_loss(args.hazard, args.out)
     elif args.stage == "vulnerability":

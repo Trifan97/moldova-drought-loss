@@ -114,6 +114,8 @@ def test_provenance_round_trips_and_its_absence_is_an_error(tmp_path: Path) -> N
         "spei_file": "stations.csv",
         "first_year": 1961,
         "last_year": 2020,
+        "climate": "stationary",
+        "spei_shift": {crop: 0.0 for crop in hazard.CROP_MONTHS},
     }
     with pytest.raises(FileNotFoundError, match="rebuild"):
         hazard.read_provenance(tmp_path / "empty")

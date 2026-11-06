@@ -187,6 +187,16 @@ def calibrate(cells: pd.DataFrame) -> Calibration:
     )
 
 
+def recent_climate_shift(cells: pd.DataFrame, month: int, first_year: int) -> float:
+    """How far SPEI-3 in `month` has run from its full-record mean since `first_year`.
+
+    Computed on the yearly mean over all cells, so every year weighs the same however many
+    cells report it.
+    """
+    yearly = cells[cells["month"] == month].groupby("year")["spei_3"].mean()
+    return float(yearly.loc[first_year:].mean() - yearly.mean())
+
+
 def joint_drought_share(
     values: pd.DataFrame | FloatArray, threshold: float = -1.5, fraction: float = 0.5
 ) -> float:

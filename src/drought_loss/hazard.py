@@ -84,11 +84,14 @@ def crop_spei(
     crop: str,
     range_km: float = config.SYNTHETIC_RANGE_KM,
     sites: pd.DataFrame | None = None,
+    shift: float = 0.0,
 ) -> pd.DataFrame:
     """SPEI-3 in the crop's month at each target: rows are years, columns are targets.
 
     `sites` locates the values in the `station` column (index: that name, columns lat and lon);
-    by default the 16 stations, but the open grid cells work the same way.
+    by default the 16 stations, but the open grid cells work the same way. `shift` is added at
+    each target after interpolation, so every district moves by exactly that much (kriging
+    weights do not sum to one, so shifting the stations first would not do that).
 
     Every year from the first to the last must appear, because each year becomes an event with
     the same probability; a year with no station data at all is an error, not a gap.
@@ -99,7 +102,7 @@ def crop_spei(
     values = in_month.pivot(index="year", columns="station", values="spei_3")
     years = pd.RangeIndex(values.index.min(), values.index.max() + 1, name="year")
     values = values.reindex(years)
-    return interpolate(values, sites.loc[values.columns], targets, range_km)
+    return interpolate(values, sites.loc[values.columns], targets, range_km) + shift
 
 
 def crop_severity(
@@ -107,9 +110,11 @@ def crop_severity(
     targets: pd.DataFrame,
     crop: str,
     range_km: float = config.SYNTHETIC_RANGE_KM,
+    shift: float = 0.0,
 ) -> pd.DataFrame:
     """Severity D = max(0, -SPEI-3) for one crop: rows are years, columns are targets."""
-    return (-crop_spei(station_spei, targets, crop, range_km)).clip(lower=0.0)
+    spei = crop_spei(station_spei, targets, crop, range_km, shift=shift)
+    return (-spei).clip(lower=0.0)
 
 
 def event_ordinal(year: int, month: int) -> int:
@@ -149,11 +154,19 @@ def to_climada(severity: pd.DataFrame, targets: pd.DataFrame, crop: str) -> Any:
     )
 
 
-def write_provenance(out_dir: Path, spei_path: Path, years: pd.Index) -> None:
+def write_provenance(
+    out_dir: Path,
+    spei_path: Path,
+    years: pd.Index,
+    climate: str = "stationary",
+    shifts: dict[str, float] | None = None,
+) -> None:
     record = {
         "spei_file": spei_path.name,
         "first_year": int(years.min()),
         "last_year": int(years.max()),
+        "climate": climate,
+        "spei_shift": shifts if shifts is not None else {crop: 0.0 for crop in CROP_MONTHS},
     }
     (out_dir / PROVENANCE_FILENAME).write_text(json.dumps(record, indent=2), encoding="utf-8")
 
