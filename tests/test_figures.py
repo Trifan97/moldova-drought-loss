@@ -18,6 +18,17 @@ def test_exceedance_points_give_the_kth_largest_a_return_period_of_n_over_k() ->
     np.testing.assert_allclose(periods, [4.0, 2.0, 4 / 3, 1.0])
 
 
+def test_the_map_projection_is_moldova_tm() -> None:
+    point = gpd.GeoSeries.from_xy([28.4, 28.8575], [47.0, 47.0105], crs="EPSG:4326")
+    projected = point.to_crs(figures.MAP_CRS)
+    assert projected.crs.name == "MOLDREF99 / Moldova TM"
+    # On the central meridian, 28.4° E, easting is exactly the 200 km false easting.
+    assert projected.x.iloc[0] == pytest.approx(200_000.0, abs=1e-6)
+    # Chisinau sits about 35 km east of it and 208 km north of the false origin.
+    assert projected.x.iloc[1] == pytest.approx(234_787, abs=1)
+    assert projected.y.iloc[1] == pytest.approx(208_203, abs=1)
+
+
 def write_provenance(folder: Path, spei_file: str) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     (folder / hazard.PROVENANCE_FILENAME).write_text(

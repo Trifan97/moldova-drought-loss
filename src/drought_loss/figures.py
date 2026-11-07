@@ -27,6 +27,9 @@ from drought_loss import config, hazard, loss  # noqa: E402
 from drought_loss.synthetic import FloatArray  # noqa: E402
 
 DPI = 200
+# MOLDREF99 / Moldova TM: the national projection, transverse Mercator on 28.4° E, so north is
+# up across the country and shapes and distances are true to well under 0.1 %.
+MAP_CRS = 4026
 # The figures must come from the synthetic, public runs only.
 SOURCES = {
     "record": ("hazard_60y", "loss_60y"),
@@ -237,12 +240,16 @@ def plot_exceedance(
 def plot_district_map(
     districts: gpd.GeoDataFrame, stationary: pd.Series, recent: pd.Series, theme: Theme, path: Path
 ) -> None:
-    fig, axes = styled(theme, 8.0, 5.0, ncols=2)
-    fig.subplots_adjust(left=0.02, right=0.98, top=0.74, bottom=0.18, wspace=0.02)
+    # North-up, Moldova is taller than it is wide, so the maps get height; positions in inches.
+    height = 5.8
+    fig, axes = styled(theme, 8.0, height, ncols=2)
+    fig.subplots_adjust(
+        left=0.02, right=0.98, top=1 - 1.3 / height, bottom=0.9 / height, wspace=0.02
+    )
     m = 1e6
     vmax = float(max(stationary.max(), recent.max()) / m)
     cmap = LinearSegmentedColormap.from_list("sequential", list(theme.ramp))
-    projected = districts.to_crs(3035)
+    projected = districts.to_crs(MAP_CRS)
     for ax, aal, label in [
         (axes[0], stationary, "Stationary climate"),
         (axes[1], recent, "Recent climate"),
@@ -266,7 +273,7 @@ def plot_district_map(
             fontsize=9.5,
             loc="left",
         )
-    scale = fig.add_axes((0.30, 0.08, 0.40, 0.025))
+    scale = fig.add_axes((0.30, 0.4 / height, 0.40, 0.125 / height))
     bar = fig.colorbar(
         ScalarMappable(cmap=cmap, norm=Normalize(0, vmax)),
         cax=scale,
@@ -291,12 +298,22 @@ def plot_district_map(
             )
         ],
         loc="lower right",
-        bbox_to_anchor=(0.98, 0.065),
+        bbox_to_anchor=(0.98, 0.325 / height),
         frameon=False,
         fontsize=8,
     )
     for text in legend.get_texts():
         text.set_color(theme.ink_secondary)
+    fig.text(
+        0.02,
+        0.325 / height,
+        f"{projected.crs.name}\nprojection (EPSG:{MAP_CRS})",
+        ha="left",
+        va="bottom",
+        fontsize=7.5,
+        linespacing=1.4,
+        color=theme.ink_secondary,
+    )
     titles(
         fig,
         theme,
